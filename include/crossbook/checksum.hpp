@@ -30,6 +30,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 #include "crossbook/book.hpp"
 #include "crossbook/types.hpp"
@@ -67,8 +68,10 @@ inline constexpr std::size_t kMaxDigits = 20;
 /// Write |value| in decimal to `buf`, returning the number of bytes written.
 /// No allocation, no std::to_string, no locale.
 inline std::size_t write_digits(std::int64_t value, char* buf) noexcept {
-    auto magnitude = static_cast<std::uint64_t>(value < 0 ? -(value + 1) + 1ULL
-                                                          : static_cast<std::uint64_t>(value));
+    // Magnitude taken in unsigned space: negating INT64_MIN is UB in signed
+    // arithmetic. See the same idiom in fixed.hpp::format_fixed.
+    const auto bits = static_cast<std::uint64_t>(value);
+    std::uint64_t magnitude = (value < 0) ? (0ULL - bits) : bits;
     char tmp[kMaxDigits];
     std::size_t n = 0;
     do {

@@ -16,7 +16,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
+#include <map>
 #include <random>
+#include <utility>
 #include <vector>
 
 #include "crossbook/book.hpp"

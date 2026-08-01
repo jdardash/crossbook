@@ -246,16 +246,20 @@ constexpr bool checked_add(std::int64_t a, std::int64_t b, std::int64_t& out) no
 /// wire representation: see `round_trips()`.
 [[nodiscard]] inline std::string format_fixed(std::int64_t mantissa, Scale scale) {
     const bool negative = mantissa < 0;
-    // Negating INT64_MIN is UB; widen to unsigned before taking the magnitude.
-    auto magnitude = static_cast<std::uint64_t>(negative ? -(mantissa + 1) + 1ULL
-                                                         : static_cast<std::uint64_t>(mantissa));
+    // Negating INT64_MIN in signed arithmetic is UB, so take the magnitude in
+    // unsigned space where wraparound is defined. C++20 fixes two's complement
+    // representation, making the conversion exact rather than implementation
+    // defined.
+    const auto bits = static_cast<std::uint64_t>(mantissa);
+    const std::uint64_t magnitude = negative ? (0ULL - bits) : bits;
+    const auto width = static_cast<std::size_t>(scale);
 
     std::string digits = std::to_string(magnitude);
-    if (scale > 0) {
-        if (digits.size() <= scale) {
-            digits.insert(0, static_cast<std::size_t>(scale) + 1 - digits.size(), '0');
+    if (width > 0) {
+        if (digits.size() <= width) {
+            digits.insert(0, width + 1 - digits.size(), '0');
         }
-        digits.insert(digits.size() - scale, 1, '.');
+        digits.insert(digits.size() - width, 1, '.');
     }
     if (negative) {
         digits.insert(0, 1, '-');
