@@ -221,10 +221,22 @@ struct ThroughputResult {
     std::uint64_t events{0};
     std::uint64_t wall_ns{0};
 
+    /// True when the run took long enough for the clock to resolve it.
+    ///
+    /// A trivial handler over a short capture can finish inside the clock's
+    /// tick, leaving `wall_ns` at zero. The rate is then genuinely unknown, and
+    /// callers must not read the 0.0 below as "no throughput" — that is the
+    /// division guard, not a measurement. Lengthen the capture instead.
+    [[nodiscard]] bool measurable() const noexcept { return wall_ns > 0; }
+
+    /// Events per second, or 0.0 when `measurable()` is false.
     [[nodiscard]] double events_per_second() const noexcept {
         return wall_ns == 0 ? 0.0
                             : static_cast<double>(events) * 1e9 / static_cast<double>(wall_ns);
     }
+
+    /// Mean service time, or 0.0 when nothing ran. Never a latency figure: with
+    /// no pacing there is no schedule to be late against.
     [[nodiscard]] double mean_ns() const noexcept {
         return events == 0 ? 0.0 : static_cast<double>(wall_ns) / static_cast<double>(events);
     }

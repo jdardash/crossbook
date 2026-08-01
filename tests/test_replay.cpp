@@ -174,8 +174,17 @@ TEST_CASE("throughput replay is labelled as throughput, not latency", "[replay]"
 
     CHECK(seen == 10'000);
     CHECK(r.events == 10'000);
-    CHECK(r.events_per_second() > 0.0);
-    CHECK(r.mean_ns() >= 0.0);
+
+    // A no-op handler can finish the whole capture inside one clock tick, which
+    // macOS demonstrated by failing an unconditional `> 0.0` here. When the run
+    // is below the clock's resolution the rate is unknown, not zero, and the
+    // API says so via measurable() rather than pretending otherwise.
+    if (r.measurable()) {
+        CHECK(r.events_per_second() > 0.0);
+        CHECK(r.mean_ns() > 0.0);
+    } else {
+        CHECK(r.events_per_second() == 0.0);
+    }
 }
 
 TEST_CASE("median_interval_ns finds the typical gap despite bursts", "[replay]") {
