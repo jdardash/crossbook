@@ -24,11 +24,21 @@ add_executable(crossbook_tests
     test_venues.cpp
     test_feed.cpp
     test_replay.cpp
+    test_ws_frame.cpp
+    test_url.cpp
+    test_handshake.cpp
+    test_capture.cpp
 )
 
 target_link_libraries(crossbook_tests PRIVATE
     crossbook::crossbook
     Catch2::Catch2WithMain
+)
+
+# Somewhere writable for the capture round-trip test. The build tree, so a test
+# run leaves nothing behind in the source tree or in a shared temp directory.
+target_compile_definitions(crossbook_tests PRIVATE
+    CROSSBOOK_TEST_TMP_DIR="${CMAKE_CURRENT_BINARY_DIR}"
 )
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
