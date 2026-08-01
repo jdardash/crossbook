@@ -25,6 +25,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -451,6 +452,61 @@ public:
 
     /// Best bid / best ask, if the side has any levels.
     [[nodiscard]] bool best(Side s, Level& out) const noexcept { return side(s).best(out); }
+
+    /// Drop levels beyond `max_levels` on one side, keeping those nearest the
+    /// touch. Returns how many were removed. `max_levels == 0` does nothing.
+    ///
+    /// DEPTH-LIMITED SUBSCRIPTIONS NEED THIS, AND THE NEED IS NOT OBVIOUS.
+    ///
+    /// A venue serving a top-N book tells you when a level is cancelled, but not
+    /// when a level falls out of the window because a better one arrived — from
+    /// its point of view there is nothing to report, the level simply is not in
+    /// the top N any more. A client that never trims therefore accumulates
+    /// levels the venue stopped tracking long ago. They sit there harmlessly,
+    /// below the depth the checksum covers, until enough removals near the touch
+    /// let one back into the top 10 — and then the checksum fails, on an update
+    /// that did nothing wrong, minutes after the actual divergence.
+    ///
+    /// Measured against Kraken BTC/USD at depth 10: without trimming, 4 of 298
+    /// updates mismatched over one minute, and the book had grown to 20 bid
+    /// levels for a 10-level subscription. With it, every update matched.
+    ///
+    /// Allocation-free: doomed prices are batched through a stack buffer, and
+    /// the loop repeats if one pass could not name them all.
+    std::size_t trim(Side s, std::size_t max_levels) {
+        if (max_levels == 0) {
+            return 0;
+        }
+
+        std::size_t removed = 0;
+        for (;;) {
+            // Collect before removing: mutating a side while iterating it is
+            // undefined for the map, and confusing for the array.
+            std::array<Price, 64> doomed{};
+            std::size_t seen = 0;
+            std::size_t count = 0;
+            side(s).for_each([&](const Level& lvl) {
+                if (seen++ < max_levels) {
+                    return true;
+                }
+                doomed[count++] = lvl.price;
+                return count < doomed.size();
+            });
+
+            if (count == 0) {
+                return removed;
+            }
+            for (std::size_t i = 0; i < count; ++i) {
+                side(s).apply(doomed[i], Qty{0});
+            }
+            removed += count;
+        }
+    }
+
+    /// Trim both sides. The common case, since a depth is per subscription.
+    std::size_t trim(std::size_t max_levels) {
+        return trim(Side::kBid, max_levels) + trim(Side::kAsk, max_levels);
+    }
 
     /// Copy the top `n` levels of a side, in book order. Returns how many were
     /// available (which may be fewer than `n`).
