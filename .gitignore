@@ -38,10 +38,13 @@ leak-*
 timeout-*
 oom-*
 
-# Captures — feed recordings are large and regenerable. Small committed
-# fixtures live in tests/fixtures/ and are added with `git add -f`.
+# Captures — feed recordings are large and regenerable, so they are ignored by
+# default. The exception is tests/fixtures/, which holds the small committed
+# captures CI replays offline; those are the evidence behind the match rate in
+# the README, so they are un-ignored explicitly rather than force-added by hand.
 captures/
 *.cbcap
+!tests/fixtures/*.cbcap
 
 # Benchmark output
 bench-results/

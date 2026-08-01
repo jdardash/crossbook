@@ -263,6 +263,8 @@ public:
         return IoStatus::kOk;
     }
 
+    void set_read_timeout(int timeout_ms) override { socket_.set_read_timeout(timeout_ms); }
+
     void close() override {
         if (have_ctx_) {
             (void)::DeleteSecurityContext(&ctx_);

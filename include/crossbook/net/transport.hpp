@@ -86,6 +86,17 @@ public:
     /// there is no useful way for a caller to handle one.
     [[nodiscard]] virtual IoStatus write(const char* buf, std::size_t len) = 0;
 
+    /// Change the read timeout after connecting.
+    ///
+    /// The handshake and the steady state want very different numbers. An
+    /// opening handshake across a congested path can legitimately take tens of
+    /// seconds - measured against Kraken's edge, sometimes over twenty - while a
+    /// steady-state read wants to time out in about a second so the caller's
+    /// loop stays responsive to shutdown and to its own deadlines. Using one
+    /// value for both means choosing between a client that gives up on a slow
+    /// connect and a loop that hangs for ten seconds on every quiet market.
+    virtual void set_read_timeout(int timeout_ms) = 0;
+
     virtual void close() = 0;
 
     [[nodiscard]] virtual bool connected() const noexcept = 0;

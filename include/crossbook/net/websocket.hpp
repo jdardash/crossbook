@@ -54,9 +54,18 @@ public:
 
     /// Dial `url` (ws:// or wss://) and complete the opening handshake.
     ///
-    /// `timeout_ms` bounds both the connect and each subsequent read; it is not
-    /// a deadline for the whole session.
-    [[nodiscard]] bool connect(std::string_view url, int timeout_ms = 10'000);
+    /// The two timeouts are separate because they want opposite things.
+    /// `handshake_timeout_ms` has to tolerate a slow path: an opening handshake
+    /// through a busy edge can take tens of seconds, and measured against
+    /// Kraken it sometimes takes over twenty. `read_timeout_ms` takes over once
+    /// the connection is up and wants to be short, because it sets how often
+    /// `poll` returns during a quiet market and therefore how quickly the caller
+    /// notices a deadline or a Ctrl-C. Collapsing the two into one number forces
+    /// a choice between failing slow connects and a sluggish loop; the first
+    /// version of this class made that mistake and failed to connect during
+    /// exactly the episodes it most needed to ride out.
+    [[nodiscard]] bool connect(std::string_view url, int handshake_timeout_ms = 30'000,
+                               int read_timeout_ms = 1'000);
 
     /// Next application message.
     ///

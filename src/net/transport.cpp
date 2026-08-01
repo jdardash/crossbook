@@ -47,6 +47,8 @@ public:
         return status;
     }
 
+    void set_read_timeout(int timeout_ms) override { socket_.set_read_timeout(timeout_ms); }
+
     void close() override {
         socket_.close();
         connected_ = false;

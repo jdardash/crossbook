@@ -54,7 +54,8 @@ std::uint32_t WebSocketClient::next_mask_key() {
     return static_cast<std::uint32_t>(rng_());
 }
 
-bool WebSocketClient::connect(std::string_view url_text, int timeout_ms) {
+bool WebSocketClient::connect(std::string_view url_text, int handshake_timeout_ms,
+                              int read_timeout_ms) {
     error_.clear();
     reader_.reset();
     stats_ = WebSocketStats{};
@@ -71,7 +72,7 @@ bool WebSocketClient::connect(std::string_view url_text, int timeout_ms) {
         error_ = "no TLS backend in this build";
         return false;
     }
-    if (!transport_->connect(url_.host, url_.port, timeout_ms)) {
+    if (!transport_->connect(url_.host, url_.port, handshake_timeout_ms)) {
         error_ = transport_->last_error();
         return false;
     }
@@ -94,10 +95,14 @@ bool WebSocketClient::connect(std::string_view url_text, int timeout_ms) {
         return false;
     }
 
-    if (!complete_handshake(expected_accept, timeout_ms)) {
+    if (!complete_handshake(expected_accept, handshake_timeout_ms)) {
         transport_->close();
         return false;
     }
+
+    // The generous handshake budget has done its job; switch to a short read
+    // timeout so the caller's poll loop stays responsive on a quiet market.
+    transport_->set_read_timeout(read_timeout_ms);
 
     open_ = true;
     return true;

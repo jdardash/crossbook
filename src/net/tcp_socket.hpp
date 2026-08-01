@@ -56,6 +56,9 @@ public:
     [[nodiscard]] IoStatus read(char* buf, std::size_t len, std::size_t& n_read,
                                 std::string& error);
 
+    /// Change the receive timeout on a connected socket.
+    void set_read_timeout(int timeout_ms) noexcept;
+
     /// Write all of `len`, looping over partial sends.
     [[nodiscard]] IoStatus write(const char* buf, std::size_t len, std::string& error);
 

@@ -166,6 +166,8 @@ public:
         return IoStatus::kOk;
     }
 
+    void set_read_timeout(int timeout_ms) override { socket_.set_read_timeout(timeout_ms); }
+
     void close() override {
         if (ssl_ != nullptr) {
             // Best-effort close_notify. A venue that has already gone away makes

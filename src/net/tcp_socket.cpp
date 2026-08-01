@@ -171,6 +171,16 @@ bool TcpSocket::connect(const std::string& host, std::uint16_t port, int timeout
     (void)::setsockopt(fd_, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
 #endif
 
+    set_read_timeout(timeout_ms);
+
+    error.clear();
+    return true;
+}
+
+void TcpSocket::set_read_timeout(int timeout_ms) noexcept {
+    if (fd_ == kInvalidSocket) {
+        return;
+    }
 #ifdef _WIN32
     // Windows takes the timeout as a DWORD of milliseconds.
     auto ms = static_cast<DWORD>(timeout_ms);
@@ -185,9 +195,6 @@ bool TcpSocket::connect(const std::string& host, std::uint16_t port, int timeout
     (void)::setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     (void)::setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 #endif
-
-    error.clear();
-    return true;
 }
 
 IoStatus TcpSocket::read(char* buf, std::size_t len, std::size_t& n_read, std::string& error) {

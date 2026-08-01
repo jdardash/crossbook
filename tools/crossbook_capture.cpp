@@ -27,6 +27,7 @@
 
 #include "crossbook/capture.hpp"
 #include "crossbook/net/websocket.hpp"
+#include "tool_common.hpp"
 
 namespace {
 
@@ -198,10 +199,7 @@ int main(int argc, char** argv) {
     crossbook::net::WebSocketClient client;
     std::printf("connecting to %s\n", venue.url.c_str());
 
-    // A generous connect timeout that then becomes the per-read timeout, which
-    // is what makes the poll loop return often enough to notice Ctrl-C and the
-    // run deadline even when the market is silent.
-    if (!client.connect(venue.url, 5'000)) {
+    if (!crossbook::tools::connect_with_backoff(client, venue.url)) {
         std::fprintf(stderr, "error: %s\n", client.last_error().c_str());
         return 1;
     }
