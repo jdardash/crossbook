@@ -1,0 +1,17 @@
+---
+Language: Cpp
+BasedOnStyle: Google
+
+ColumnLimit: 100
+IndentWidth: 4
+AccessModifierOffset: -4
+DerivePointerAlignment: false
+PointerAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline
+AlwaysBreakTemplateDeclarations: Yes
+SpacesBeforeTrailingComments: 2
+
+# Our headers first, then the standard library, then third-party. Keeps the
+# dependency direction visible at a glance.
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive

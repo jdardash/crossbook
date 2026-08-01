@@ -1,0 +1,58 @@
+# Build trees
+build/
+build-*/
+out/
+cmake-build-*/
+_deps/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+compile_commands.json
+install_manifest.txt
+
+# Compiler / linker artefacts
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+*.gcda
+*.gcno
+*.profraw
+*.profdata
+
+# Fuzzing
+fuzz/corpus/
+fuzz/artifacts/
+crash-*
+leak-*
+timeout-*
+oom-*
+
+# Captures — feed recordings are large and regenerable. Small committed
+# fixtures live in tests/fixtures/ and are added with `git add -f`.
+captures/
+*.cbcap
+
+# Benchmark output
+bench-results/
+*.bench.json
+
+# Editors / OS
+.vs/
+.vscode/
+.idea/
+.cache/
+*.swp
+*~
+.DS_Store
+Thumbs.db

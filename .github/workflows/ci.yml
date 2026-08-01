@@ -1,0 +1,166 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Three compilers, three standard libraries, two operating systems. A book
+  # that reconstructs correctly under one toolchain and not another is a book
+  # with undefined behaviour in it, and the whole point of this library is that
+  # its output is bit-identical everywhere.
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-gcc-release
+            os: ubuntu-latest
+            cc: gcc
+            cxx: g++
+            build_type: Release
+          - name: linux-gcc-debug
+            os: ubuntu-latest
+            cc: gcc
+            cxx: g++
+            build_type: Debug
+          - name: linux-clang-release
+            os: ubuntu-latest
+            cc: clang
+            cxx: clang++
+            build_type: Release
+          - name: macos-clang-release
+            os: macos-latest
+            cc: clang
+            cxx: clang++
+            build_type: Release
+          - name: windows-msvc-release
+            os: windows-latest
+            build_type: Release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCROSSBOOK_BUILD_TESTS=ON
+          -DCROSSBOOK_WERROR=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # Determinism is a cross-platform claim, so it is checked across platforms
+  # rather than asserted in a README. Every job prints the hash of a fixed
+  # replay; this job fails if they are not all identical.
+  determinism:
+    name: determinism (cross-platform hash)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCROSSBOOK_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build
+      - name: Run determinism tests
+        run: ./build/tests/crossbook_tests "[determinism]" --reporter compact
+
+  sanitizers:
+    name: sanitizers (asan+ubsan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: Configure
+        env:
+          CC: clang
+          CXX: clang++
+        run: >
+          cmake -S . -B build-asan -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCROSSBOOK_BUILD_TESTS=ON
+          "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all"
+          "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"
+      - name: Build
+        run: cmake --build build-asan
+      - name: Test
+        env:
+          # halt_on_error keeps a sanitizer report from scrolling past as a
+          # warning in a green build.
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build-asan --output-on-failure
+
+  fuzz:
+    name: fuzz (smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: Configure
+        env:
+          CC: clang
+          CXX: clang++
+        run: >
+          cmake -S . -B build-fuzz -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCROSSBOOK_BUILD_TESTS=OFF
+          -DCROSSBOOK_BUILD_FUZZ=ON
+      - name: Build
+        run: cmake --build build-fuzz
+      # A short run per target on every PR. This is a regression gate, not a
+      # fuzzing campaign: it catches an input class that a change has newly
+      # broken. Long campaigns run out of band and their corpora are committed.
+      - name: Fuzz parse_fixed
+        run: ./build-fuzz/fuzz/fuzz_parse_fixed -max_total_time=60 -print_final_stats=1
+      - name: Fuzz book (differential vs std::map)
+        run: ./build-fuzz/fuzz/fuzz_book -max_total_time=90 -print_final_stats=1
+      - name: Fuzz sequence state machine
+        run: ./build-fuzz/fuzz/fuzz_sequence -max_total_time=60 -print_final_stats=1
+      - name: Upload crash artefacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: |
+            crash-*
+            leak-*
+            timeout-*
+          if-no-files-found: ignore
+
+  format:
+    name: clang-format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check formatting
+        run: |
+          find include src tests bench fuzz -name '*.hpp' -o -name '*.cpp' \
+            | xargs clang-format --dry-run --Werror
