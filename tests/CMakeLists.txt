@@ -19,6 +19,11 @@ add_executable(crossbook_tests
     test_sequence.cpp
     test_no_alloc.cpp
     test_determinism.cpp
+    test_histogram.cpp
+    test_json.cpp
+    test_venues.cpp
+    test_feed.cpp
+    test_replay.cpp
 )
 
 target_link_libraries(crossbook_tests PRIVATE

@@ -133,6 +133,8 @@ jobs:
         run: ./build-fuzz/fuzz/fuzz_book -max_total_time=60 -print_final_stats=1
       - name: Fuzz sequence state machine
         run: ./build-fuzz/fuzz/fuzz_sequence -max_total_time=45 -print_final_stats=1
+      - name: Fuzz JSON scanner and venue decoders
+        run: ./build-fuzz/fuzz/fuzz_decode -max_total_time=90 -print_final_stats=1
       - name: Upload crash artefacts
         if: failure()
         uses: actions/upload-artifact@v4

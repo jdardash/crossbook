@@ -58,7 +58,7 @@ The identity has one precondition — the venue must spell values canonically at
 the instrument's scale — and that precondition is [documented, tested, and
 guarded at ingest](include/crossbook/fixed.hpp) rather than assumed.
 
-## Correctness, by four independent mechanisms
+## Correctness, by five independent mechanisms
 
 1. **Exchange checksum.** Kraken's CRC32, recomputed locally on every update.
 2. **Differential testing.** Two independent book implementations — a `std::map`
@@ -73,6 +73,10 @@ guarded at ingest](include/crossbook/fixed.hpp) rather than assumed.
    platform. No floating point anywhere in the book, so there is nothing left
    that could vary by compiler or CPU. Checked across Linux, macOS, and Windows
    in CI.
+5. **Recovery.** A book that is known to be wrong is never served and never
+   updated further until it has been rebuilt from a snapshot. The failure that
+   costs money is not the dropped message — it is applying the next one anyway.
+   [`feed.hpp`](include/crossbook/feed.hpp) exists to make that impossible.
 
 Divergences are never summarised away. Every mismatch is
 [recorded with a cause](include/crossbook/divergence.hpp), because a match rate
@@ -119,11 +123,24 @@ and the input is synthetic. A mean is the wrong statistic for latency anyway,
 because the distribution is heavily right-tailed and the mean hides the tail you
 would actually be paid to fix.
 
-Tail latency needs an open-loop harness that paces messages at their recorded
-inter-arrival times regardless of whether the consumer keeps up. Measuring
-latency with a closed loop like this one produces results that are optimistic by
-orders of magnitude — the coordinated omission problem — and the fix is a
-different harness, not a different statistic over this one. That's v0.2.
+Tail latency needs a different harness, and
+[it now exists](include/crossbook/replay.hpp): `replay_open_loop` paces frames at
+their recorded inter-arrival times regardless of whether the consumer keeps up,
+and measures each one from the instant it was *supposed* to be processed rather
+than the instant work began. A stall therefore lands on every message queued
+behind it, exactly as production would experience — no correction step needed,
+because nothing was omitted.
+
+That distinction is not academic. A closed loop stops issuing work while it is
+stalled, so a 100ms hiccup contributes one slow sample instead of the ten
+thousand messages actually delayed behind it, and the reported p99.9 describes
+the harness rather than the system. Gil Tene named this coordinated omission;
+[a test](tests/test_replay.cpp) asserts the harness does not commit it.
+
+No latency figures are published here yet. Producing them honestly needs a real
+captured feed on tuned hardware — pinned cores, turbo and C-states disabled —
+and until that exists, quoting numbers from a laptop would be exactly the kind
+of unearned precision the rest of this README argues against.
 
 ### The benchmarks found a real bug
 
@@ -185,9 +202,37 @@ if (kraken_checksum(book) != message_checksum) {
 }
 ```
 
+Or drive the whole pipeline — decode, verify, recover — from raw frames:
+
+```cpp
+#include "crossbook/feed.hpp"
+#include "crossbook/venues/kraken.hpp"
+
+using namespace crossbook;
+using Kraken = Feed<venues::KrakenBookDecoder, ArrayBook>;
+
+Kraken feed("kraken", venues::KrakenBookDecoder(InstrumentSpec{"BTC/USD", 1, 8}),
+            SequencePolicy::kStrictIncrement);
+
+for (std::string_view frame : frames_from_your_transport) {
+    switch (feed.handle(frame)) {
+        case FeedStatus::kApplied:       break;  // Verified against Kraken's CRC32.
+        case FeedStatus::kIgnored:       break;  // Heartbeat, ack, stale duplicate.
+        case FeedStatus::kRejected:      break;  // Logged; book untouched.
+        case FeedStatus::kNeedsSnapshot:
+            // The book is known wrong. Resubscribe. Do NOT read it until then.
+            resubscribe();
+            break;
+    }
+}
+
+// feed.synced() must be true before anyone reads the book.
+// feed.match_rate() is only evidence if feed.divergences().verified() > 0.
+```
+
 ## Status
 
-**v0.1 — the verified core.** Honest about what exists:
+**v0.2 — decoders, recovery, and honest latency.**
 
 - [x] Exact fixed-point decimal, refuses to round rather than silently rounding
 - [x] L2 book, two implementations, differentially tested against each other
@@ -196,15 +241,19 @@ if (kraken_checksum(book) != message_checksum) {
 - [x] Divergence log with cause classification
 - [x] No-allocation hot path, **enforced by a test** that hooks global `operator new`
 - [x] Determinism via state hashing
-- [x] 69 test cases / 298 assertions, `-Werror`, ASan + UBSan, three fuzz targets
-- [ ] Websocket transport and JSON decoders — **in progress**
-- [ ] Open-loop replay harness with HdrHistogram (v0.2)
-- [ ] Automatic resnapshot recovery (v0.3)
+- [x] Zero-dependency JSON scanner returning raw wire tokens
+- [x] Kraken v2 `book` and Binance spot/futures depth decoders
+- [x] Feed handler with resnapshot recovery and staleness detection
+- [x] HDR histogram with coordinated-omission correction
+- [x] Open-loop replay harness measuring against the schedule
+- [x] 139 test cases / 841 assertions, `-Werror`, ASan + UBSan, four fuzz targets
+- [ ] Websocket transport — **not built.** Bring your own frames.
 - [ ] L3 / order-by-order books (v0.4)
 - [ ] Cross-venue consolidated book and `executable_size` (v0.4)
 
-Until the transport lands, the library reconstructs and verifies books from
-events you feed it; it does not yet connect to venues itself.
+The library decodes, verifies, and recovers; it does not open sockets. Feed it
+frames from whatever transport you like — that boundary keeps the correctness
+core testable offline and free of a TLS dependency.
 
 ## What this is not
 
@@ -226,6 +275,13 @@ is right" is something you can check rather than something you have to believe.
   it is cheap here
 - [`sequence.hpp`](include/crossbook/sequence.hpp) — three venue contracts, one
   state machine
+- [`json.hpp`](include/crossbook/json.hpp) — why the scanner is hand-written, and
+  why `well_formed` has to run first
+- [`feed.hpp`](include/crossbook/feed.hpp) — the recovery state machine
+- [`histogram.hpp`](include/crossbook/histogram.hpp) — HDR bucketing and
+  coordinated-omission correction
+- [`replay.hpp`](include/crossbook/replay.hpp) — open-loop pacing, and why the
+  spin threshold is 20ms
 - [`bench_book.cpp`](bench/bench_book.cpp) — what the numbers mean and don't
 
 ## References
