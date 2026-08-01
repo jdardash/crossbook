@@ -1,0 +1,14 @@
+# Normalise line endings in the repository. Determinism is a claim this library
+# makes about its output; having the sources themselves differ byte-wise between
+# a Windows and a Linux checkout undercuts that before anyone reads the code.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gz binary
+*.zip binary
+*.cbcap binary
+
+# Captured feed fixtures are data, not text. Never let them be munged, and keep
+# them out of diffs where they would be unreadable anyway.
+tests/fixtures/** binary linguist-generated=true
