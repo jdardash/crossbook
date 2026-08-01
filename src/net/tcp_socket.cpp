@@ -139,7 +139,7 @@ bool TcpSocket::connect(const std::string& host, std::uint16_t port, int timeout
             continue;
         }
 
-        if (::connect(fd, it->ai_addr, static_cast<int>(it->ai_addrlen)) != 0) {
+        if (::connect(fd, it->ai_addr, static_cast<SockLen>(it->ai_addrlen)) != 0) {
             last_failure = socket_error_string("connect");
 #ifdef _WIN32
             ::closesocket(fd);
@@ -164,11 +164,11 @@ bool TcpSocket::connect(const std::string& host, std::uint16_t port, int timeout
     // latency-relevant; there is nothing to coalesce.
     int one = 1;
     (void)::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&one),
-                       static_cast<int>(sizeof(one)));
+                       static_cast<SockLen>(sizeof(one)));
 
 #if defined(SO_NOSIGPIPE)
     // The macOS / BSD half of the SIGPIPE story; see the note by the include.
-    (void)::setsockopt(fd_, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+    (void)::setsockopt(fd_, SOL_SOCKET, SO_NOSIGPIPE, &one, static_cast<SockLen>(sizeof(one)));
 #endif
 
     set_read_timeout(timeout_ms);
@@ -185,15 +185,15 @@ void TcpSocket::set_read_timeout(int timeout_ms) noexcept {
     // Windows takes the timeout as a DWORD of milliseconds.
     auto ms = static_cast<DWORD>(timeout_ms);
     (void)::setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&ms),
-                       static_cast<int>(sizeof(ms)));
+                       static_cast<SockLen>(sizeof(ms)));
     (void)::setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&ms),
-                       static_cast<int>(sizeof(ms)));
+                       static_cast<SockLen>(sizeof(ms)));
 #else
     ::timeval tv{};
     tv.tv_sec = timeout_ms / 1000;
     tv.tv_usec = static_cast<decltype(tv.tv_usec)>((timeout_ms % 1000) * 1000);
-    (void)::setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    (void)::setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    (void)::setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, static_cast<SockLen>(sizeof(tv)));
+    (void)::setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &tv, static_cast<SockLen>(sizeof(tv)));
 #endif
 }
 

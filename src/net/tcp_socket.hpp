@@ -21,6 +21,8 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 // clang-format on
+#else
+#include <sys/socket.h>
 #endif
 
 namespace crossbook::net::detail {
@@ -28,9 +30,14 @@ namespace crossbook::net::detail {
 #ifdef _WIN32
 using SocketHandle = ::SOCKET;
 inline constexpr SocketHandle kInvalidSocket = INVALID_SOCKET;
+/// Winsock spells the address and option length as a signed int; POSIX uses an
+/// unsigned socklen_t. Naming the difference is what keeps -Wsign-conversion
+/// quiet without scattering casts that happen to be right on one platform.
+using SockLen = int;
 #else
 using SocketHandle = int;
 inline constexpr SocketHandle kInvalidSocket = -1;
+using SockLen = ::socklen_t;
 #endif
 
 /// Format a platform socket error as "message (code)".

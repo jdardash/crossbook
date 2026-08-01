@@ -250,18 +250,24 @@ bool WebSocketClient::send_frame(Opcode opcode, std::string_view payload) {
 
     const std::uint32_t mask_key = next_mask_key();
 
-    send_buf_.clear();
-    send_buf_.resize(kMaxHeaderSize + payload.size());
-
+    // The header goes into a fixed array first, rather than straight into the
+    // send buffer. `write_frame_header` may write up to kMaxHeaderSize bytes,
+    // and an array of exactly that size states the bound in the type where a
+    // just-resized vector only implies it — GCC 13 rejects the implied version
+    // under -Wstringop-overflow, and it is not wrong to want the guarantee.
+    std::array<char, kMaxHeaderSize> header{};
     const std::size_t header_size =
-        write_frame_header(send_buf_.data(), opcode, payload.size(), mask_key);
+        write_frame_header(header.data(), opcode, payload.size(), mask_key);
+
+    const std::size_t total = header_size + payload.size();
+    send_buf_.resize(total);
+    std::memcpy(send_buf_.data(), header.data(), header_size);
 
     if (!payload.empty()) {
         std::memcpy(send_buf_.data() + header_size, payload.data(), payload.size());
         apply_mask(send_buf_.data() + header_size, payload.size(), mask_key);
     }
 
-    const std::size_t total = header_size + payload.size();
     if (transport_->write(send_buf_.data(), total) != IoStatus::kOk) {
         error_ = transport_->last_error().empty() ? "frame write failed"
                                                   : transport_->last_error();
