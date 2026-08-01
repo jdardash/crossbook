@@ -47,7 +47,7 @@ jobs:
             build_type: Release
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure
         env:
@@ -75,7 +75,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCROSSBOOK_BUILD_TESTS=ON
       - name: Build
@@ -89,7 +89,7 @@ jobs:
     name: sanitizers (asan+ubsan)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configure
         env:
           CC: clang
@@ -112,7 +112,7 @@ jobs:
     name: fuzz (smoke)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Configure
         env:
           CC: clang
@@ -143,22 +143,3 @@ jobs:
             leak-*
             timeout-*
           if-no-files-found: ignore
-
-  # Advisory until the tree has been normalised with a pinned clang-format
-  # version. A formatting job that fails on a version difference teaches people
-  # to ignore red builds, which is a worse outcome than inconsistent braces.
-  format:
-    name: clang-format (advisory)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check formatting
-        run: |
-          files=$(find include tests bench fuzz \
-            \( -name '*.hpp' -o -name '*.cpp' \) 2>/dev/null || true)
-          if [ -z "$files" ]; then
-            echo "No sources found; nothing to check."
-            exit 0
-          fi
-          echo "$files" | xargs clang-format --dry-run --Werror
