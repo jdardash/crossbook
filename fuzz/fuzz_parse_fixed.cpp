@@ -13,11 +13,12 @@
 //   - a rejected parse never leaves a non-zero mantissa behind
 //   - parsing is total: no input, however malformed, may abort or hang
 
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
+
+#include "fuzz_check.hpp"
 
 #include "crossbook/fixed.hpp"
 
@@ -38,26 +39,26 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
 
     if (!result.ok()) {
         // A rejected parse must not smuggle out a value.
-        assert(result.mantissa == 0);
+        CB_CHECK(result.mantissa == 0);
         return 0;
     }
 
-    assert(scale <= kMaxScale);
+    CB_CHECK(scale <= kMaxScale);
 
     // Round-trip: format the mantissa and re-parse it. This must be exact.
     // If it is not, the checksum path is unsound, because it assumes the
     // mantissa is a faithful representation of what arrived on the wire.
     const std::string canonical = format_fixed(result.mantissa, scale);
     const ParseResult reparsed = parse_fixed(canonical, scale);
-    assert(reparsed.ok());
-    assert(reparsed.mantissa == result.mantissa);
+    CB_CHECK(reparsed.ok());
+    CB_CHECK(reparsed.mantissa == result.mantissa);
 
     // The checksum token must be pure digits: anything else corrupts the CRC
     // input and would produce mismatches that look like book errors.
     const std::string token = checksum_token(result.mantissa);
-    assert(!token.empty());
+    CB_CHECK(!token.empty());
     for (char c : token) {
-        assert(c >= '0' && c <= '9');
+        CB_CHECK(c >= '0' && c <= '9');
     }
 
     return 0;

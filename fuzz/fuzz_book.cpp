@@ -13,10 +13,11 @@
 // books must be identical: hash, checksum, level counts, and the top 32 levels
 // per side. Any divergence at all aborts.
 
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+
+#include "fuzz_check.hpp"
 
 #include "crossbook/book.hpp"
 #include "crossbook/checksum.hpp"
@@ -50,10 +51,10 @@ private:
 };
 
 void require_equivalent(const MapBook& reference, const ArrayBook& subject) {
-    assert(reference.state_hash() == subject.state_hash());
-    assert(kraken_checksum(reference) == kraken_checksum(subject));
-    assert(reference.bids().size() == subject.bids().size());
-    assert(reference.asks().size() == subject.asks().size());
+    CB_CHECK(reference.state_hash() == subject.state_hash());
+    CB_CHECK(kraken_checksum(reference) == kraken_checksum(subject));
+    CB_CHECK(reference.bids().size() == subject.bids().size());
+    CB_CHECK(reference.asks().size() == subject.asks().size());
 
     std::vector<Level> a;
     std::vector<Level> b;
@@ -62,15 +63,15 @@ void require_equivalent(const MapBook& reference, const ArrayBook& subject) {
         // checksum horizon are still caught.
         const std::size_t na = reference.top(s, 32, a);
         const std::size_t nb = subject.top(s, 32, b);
-        assert(na == nb);
-        assert(a == b);
+        CB_CHECK(na == nb);
+        CB_CHECK(a == b);
 
         Level la{};
         Level lb{};
         const bool ha = reference.best(s, la);
         const bool hb = subject.best(s, lb);
-        assert(ha == hb);
-        assert(!ha || la == lb);
+        CB_CHECK(ha == hb);
+        CB_CHECK(!ha || la == lb);
     }
 }
 

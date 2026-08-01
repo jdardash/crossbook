@@ -15,9 +15,10 @@
 // crashing, and it is exactly the failure a hand-written test suite tends to
 // miss because it requires an adversarial ordering to trigger.
 
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
+
+#include "fuzz_check.hpp"
 
 #include "crossbook/sequence.hpp"
 
@@ -49,15 +50,15 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
             tracker.on_snapshot(take(2));
             gap_seen_since_snapshot = false;
             // A snapshot always restores sync, whatever came before it.
-            assert(tracker.synced());
-            assert(!tracker.straddled());
+            CB_CHECK(tracker.synced());
+            CB_CHECK(!tracker.straddled());
             continue;
         }
 
         if ((op & 0x0F) == 1) {
             tracker.invalidate();
             gap_seen_since_snapshot = true;
-            assert(!tracker.synced());
+            CB_CHECK(!tracker.synced());
             continue;
         }
 
@@ -70,23 +71,23 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
 
         // THE INVARIANT.
         if (gap_seen_since_snapshot) {
-            assert(action == SequenceAction::kResyncRequired);
+            CB_CHECK(action == SequenceAction::kResyncRequired);
         }
         if (action == SequenceAction::kResyncRequired) {
             gap_seen_since_snapshot = true;
             // Losing sync must be visible to the caller, not just internal.
-            assert(!tracker.synced());
+            CB_CHECK(!tracker.synced());
         }
         if (action == SequenceAction::kApply) {
             // Applying implies we are synced and have straddled the snapshot.
-            assert(tracker.synced());
-            assert(tracker.straddled());
-            assert(tracker.last_applied_id() == ids.final_id);
+            CB_CHECK(tracker.synced());
+            CB_CHECK(tracker.straddled());
+            CB_CHECK(tracker.last_applied_id() == ids.final_id);
         }
 
         // Stats must never disagree with the actions returned.
         const SequenceStats& s = tracker.stats();
-        assert(s.applied + s.discarded_stale + s.gaps_detected <= size);
+        CB_CHECK(s.applied + s.discarded_stale + s.gaps_detected <= size);
     }
 
     return 0;
