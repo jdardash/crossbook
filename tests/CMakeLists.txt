@@ -23,6 +23,7 @@ add_executable(crossbook_tests
     test_histogram.cpp
     test_json.cpp
     test_venues.cpp
+    test_binance_sbe.cpp
     test_feed.cpp
     test_replay.cpp
     test_execution.cpp

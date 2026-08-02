@@ -19,6 +19,27 @@ only entries that can cost a reader an afternoon.
 
 ### Added
 
+- `venues::BinanceSbeDecoder`: the Binance spot SBE binary streams (schema
+  `spot_stream` 1:0) — depth diff and depth snapshot — decoded to the same
+  `DecodedMessage` the JSON decoders produce, with the same route-by-symbol
+  and refuse-rather-than-round contracts, and SBE blockLengths honoured so a
+  newer minor schema skips cleanly. Tested against hand-encoded frames
+  including a byte-by-byte truncation sweep; a live capture awaits an
+  Ed25519 API key, which the endpoint requires even for public data.
+- Busy-poll reads: `set_read_timeout(0)` on any transport (and
+  `WebSocketClient::set_read_timeout`) now means non-blocking spin, not the
+  platforms' block-forever. `crossbook_capture --busy-poll` uses it, and on
+  Linux reports a kernel-to-user delivery histogram from `SO_TIMESTAMPING`
+  receive stamps — measured live against Kraken, busy-poll cut delivery p50
+  from 150.4 us to 82.4 us.
+- `Transport::last_rx_time_ns`: the kernel's arrival clock for the newest
+  received data, exposed through TLS on both backends. On the OpenSSL path
+  this forced reads through a custom BIO, since a backend that lets
+  `SSL_read` call `recv()` itself can never see the control message the
+  timestamp rides in on.
+- Loopback tests for the transport layer — the busy-poll contract, the timed
+  path, and the receive timestamp — the first tests the socket has had.
+
 - `net::ByteBuffer`: a `std::vector<char>` whose `resize` default-initializes
   instead of zeroing. The frame reader and the Schannel backend grow their
   receive buffers by a 32 KiB chunk on every socket read and trim back to what

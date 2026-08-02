@@ -74,31 +74,57 @@ should collapse from 912 us p99 to tens of microseconds with zero code
 changes. Publish the tuned-vs-untuned pair; it is the honest-measurement
 story this README already tells, completed.
 
-**Phase 2 — transport for latency.** The transport is a blocking `recv` with
-a 1 s timeout and takes no timestamps. In order: a busy-poll read mode
-(non-blocking socket, spin on an isolated core); `SO_TIMESTAMPING`
-kernel/NIC receive timestamps threaded into the event, so measurement starts
-at the wire rather than after recv + TLS + reassembly; and a revised
-`Transport` read contract — the current copy-in `read(buf, len)` cannot
-express zero-copy completion. Skip kTLS: RX-path p99 regressions
+*Measured so far (2026-08-02), same desktop, WSL2 Ubuntu — a VM, not tuned
+metal, and still directional:* the identical sweep binary showed p50 falling
+from 20-39 us (Windows) to 2.7-3.2 us and top-rung p99 from 912 us to
+144 us — a 6.3x tail improvement from the OS change alone. Two predicted
+effects reproduced: SCHED_FIFO inside the VM is catastrophic (the spin
+starves its own vCPU; p50 collapsed to milliseconds), and the lowest-rate
+rung pays the deep-idle wakeup (8 ms p99 at 5 msg/s). Real metal with
+isolation remains the open item.
+
+**Phase 2 — transport for latency.** *Done (2026-08-02), except the
+zero-copy read contract.* `set_read_timeout(0)` now means busy-poll on
+every transport; Linux reads carry the kernel's `SO_TIMESTAMPING` arrival
+stamp (learned the hard way: `SIOCGSTAMP` and `SO_TIMESTAMPNS` are both
+dead ends for TCP), and the OpenSSL backend reads through `TcpSocket` via a
+custom BIO so timestamps and busy-poll survive TLS. Verified live against
+Kraken: busy-poll cut kernel-to-user delivery p50 from 150.4 us to 82.4 us
+(unpinned WSL2; the p99 wants the isolated core Phase 1 provides). Still
+open: a zero-copy read contract — copy-in `read(buf, len)` cannot express
+an rx ring. Skip kTLS: RX-path p99 regressions
 ([netdev paper](https://netdevconf.info/1.2/papers/ktls.pdf)) and it blocks
 the Onload route. Steady-state TLS crypto is under 1 us/record (computed from
 ~0.64 cycles/byte AES-GCM) and is not the problem.
 
-**Phase 3 — a binary venue decoder.** Binance spot SBE is the only major
-binary L2 diff-depth feed today and turns the ~1.9 us JSON decode into
-struct-field reads; it also exercises the venue-decoder seam properly.
-Deribit SBE multicast follows if derivatives matter — the only feed anywhere
-that removes TLS entirely. Kraken's lever is placement plus FIX L3, not
+**Phase 3 — a binary venue decoder.** *Decoder done (2026-08-02); live
+connection blocked on a credential.* `BinanceSbeDecoder`
+(`crossbook/venues/binance_sbe.hpp`) decodes the spot SBE depth diff and
+depth snapshot streams (schema `spot_stream` 1:0) into the same
+`DecodedMessage` the JSON decoders produce, drives `Feed` end to end, and
+honours SBE blockLengths for forward compatibility. Tested against
+hand-encoded frames including a full truncation sweep — the endpoint
+(`stream-sbe.binance.com:9443`) requires an Ed25519 API key even for public
+data, so a live capture and a captured-fixture replay await a key. Deribit
+SBE multicast follows if derivatives matter — the only feed anywhere that
+removes TLS entirely. Kraken's lever is placement plus FIX L3, not
 encoding.
 
 **Phase 4 — the JSON decode floor, for venues stuck with it.** Levers in
 order: key dispatch by length/first byte instead of chained `string_view`
-compares; SWAR digit parsing in `parse_fixed`; deriving canonical-spelling
-during the parse instead of re-formatting and byte-comparing every scalar;
-optionally a SIMD structural stage. Separately, the checksum's ~600 ns is
-dominated by re-serializing 20 levels per message — maintain the top-10
-payload incrementally as levels change instead.
+compares; deriving canonical-spelling during the parse instead of
+re-formatting and byte-comparing every scalar; optionally a SIMD structural
+stage. Separately, the checksum's ~600 ns is dominated by re-serializing 20
+levels per message — maintain the top-10 payload incrementally as levels
+change instead.
+
+One lever is measured dead and removed from the list: replacing the
+per-digit checked multiply/add in `parse_fixed` with an unchecked fast path
+below 19 digits. Interleaved same-state A/B (MSVC /O2, two rounds, median
+of 7) showed the change within noise or marginally slower — the compiler
+already handles the checked arithmetic well, and the digit loop is not
+where decode time lives. The change was reverted; measure before believing
+any remaining lever.
 
 **Phase 5 — placement and bypass.** In-region metal (c7i/c8g/m8azn) in a
 shared cluster placement group measures ~20 us p50 / ~23 us p99.9
