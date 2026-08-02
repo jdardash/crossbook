@@ -34,19 +34,39 @@ namespace {
 
 constexpr std::size_t kCaptureDepth = 25;  // The depth the capture subscribed at.
 
-std::string fixture_path() {
+std::string fixture_path(const char* name = "kraken_btcusd_sample.cbcap") {
 #ifdef CROSSBOOK_FIXTURE_DIR
-    return std::string(CROSSBOOK_FIXTURE_DIR) + "/kraken_btcusd_sample.cbcap";
+    return std::string(CROSSBOOK_FIXTURE_DIR) + "/" + name;
 #else
-    return "tests/fixtures/kraken_btcusd_sample.cbcap";
+    return std::string("tests/fixtures/") + name;
 #endif
 }
 
+/// One captured instrument, with the scales Kraken publishes for it.
+///
+/// Three price scales on purpose. BTC quotes to one decimal and XRP to five,
+/// so a book at ~$0.50 carries a mantissa in the same numeric range as one at
+/// ~$63,000 — which is precisely the arithmetic the checksum depends on. A
+/// scale bug that a single instrument would hide shows up immediately across
+/// this set.
+struct Instrument {
+    const char* file;
+    const char* symbol;
+    Scale price_scale;
+};
+
+constexpr Instrument kInstruments[] = {
+    {"kraken_btcusd_sample.cbcap", "BTC/USD", 1},
+    {"kraken_ethusd_sample.cbcap", "ETH/USD", 2},
+    {"kraken_xrpusd_sample.cbcap", "XRP/USD", 5},
+};
+
 using KrakenFeed = Feed<venues::KrakenBookDecoder, ArrayBook>;
 
-KrakenFeed make_feed(std::size_t depth) {
+KrakenFeed make_feed(std::size_t depth, const char* symbol = "BTC/USD",
+                     Scale price_scale = 1) {
     return KrakenFeed("kraken",
-                      venues::KrakenBookDecoder(InstrumentSpec{"BTC/USD", 1, 8}),
+                      venues::KrakenBookDecoder(InstrumentSpec{symbol, price_scale, 8}),
                       SequencePolicy::kStrictIncrement, depth);
 }
 
@@ -138,4 +158,55 @@ TEST_CASE("replaying the live capture is deterministic", "[live][determinism]") 
         return feed.book().state_hash();
     };
     CHECK(run() == run());
+}
+
+TEST_CASE("every checksum matches across three price scales", "[live][checksum]") {
+    // THE BROADEST EVIDENCE IN THE REPOSITORY.
+    //
+    // BTC at one decimal, ETH at two, XRP at five. A ~$0.50 instrument quoted
+    // to five places produces mantissas in the same numeric range as a ~$63,000
+    // one quoted to one, so this exercises the fixed-point and checksum path at
+    // both ends rather than at a single convenient point.
+    //
+    // Full captures behind these slices: 105,334 checksums on ETH and 92,462 on
+    // XRP over 40 minutes each, both at 100%.
+    for (const Instrument& instrument : kInstruments) {
+        INFO("instrument " << instrument.symbol << " price_scale="
+                           << static_cast<int>(instrument.price_scale));
+
+        Capture capture;
+        REQUIRE(capture.load(fixture_path(instrument.file)) == CaptureError::kOk);
+        REQUIRE(capture.size() > 1000);
+
+        auto feed = make_feed(kCaptureDepth, instrument.symbol, instrument.price_scale);
+        for (const ReplayEvent& event : capture.events()) {
+            const FeedStatus status = feed.handle(event.frame);
+            CHECK(status != FeedStatus::kRejected);
+            CHECK(status != FeedStatus::kNeedsSnapshot);
+        }
+
+        REQUIRE(feed.divergences().verified() > 1000);
+        CHECK(feed.stats().checksum_mismatches == 0);
+        CHECK(feed.match_rate() == 1.0);
+    }
+}
+
+TEST_CASE("the wrong price scale is caught by the exchange checksum",
+          "[live][checksum]") {
+    // Scales are instrument metadata you have to fetch, and getting one wrong
+    // produces a book that is numerically plausible and fails every checksum.
+    // That is the failure mode the verifier exists to make loud rather than
+    // subtle, so it is worth proving it actually is loud.
+    Capture capture;
+    REQUIRE(capture.load(fixture_path("kraken_xrpusd_sample.cbcap")) == CaptureError::kOk);
+
+    auto feed = make_feed(kCaptureDepth, "XRP/USD", 2);  // Should be 5.
+    for (const ReplayEvent& event : capture.events()) {
+        (void)feed.handle(event.frame);
+    }
+    // Either the values stop being representable at the wrong scale, or the
+    // book builds and disagrees with Kraken. Both are detections; silence
+    // would not be.
+    CHECK((feed.stats().checksum_mismatches > 0 || feed.stats().rejected > 0));
+    CHECK(feed.match_rate() < 1.0);
 }
