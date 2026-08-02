@@ -378,7 +378,8 @@ for (std::string_view frame : frames_from_your_transport) {
 - [x] Kraken CRC32 checksum, allocation-free, matching the documented algorithm
 - [x] Sequence continuity for Binance spot, Binance futures, Coinbase
 - [x] Divergence log with cause classification
-- [x] No-allocation hot path, **enforced by a test** that hooks global `operator new`
+- [x] No-allocation hot path under a *walking* touch, **enforced by a test**
+      that hooks global `operator new`
 - [x] Determinism via state hashing
 - [x] Zero-dependency JSON scanner returning raw wire tokens
 - [x] Kraken v2 `book` and Binance spot/futures depth decoders
@@ -569,9 +570,16 @@ Issues and PRs welcome. Two rules, both non-negotiable and both mechanically
 checked:
 
 1. **No floating point in the book.** Prices and quantities are integer
-   mantissas. This is what makes checksums and determinism possible.
-2. **No allocation on the hot path.** `tests/test_no_alloc.cpp` will fail the
-   build if you add one.
+   mantissas. This is what makes checksums and determinism possible. A CI job
+   greps the book path for `float`/`double` — reporting code may use them,
+   because a percentile is a ratio; the book may not. (This rule was described
+   as mechanically checked for a while before anything checked it. It is now.)
+2. **No allocation on the hot path.** `tests/test_no_alloc.cpp` hooks global
+   `operator new` and will fail the build if you add one. It covers a book
+   whose touch *walks*, not merely one that sits still — the earlier version
+   drove a fixed touch and so never entered the only branch that could
+   allocate. Beyond the price window the book degrades rather than allocating
+   per update, and `degraded()` reports when that has happened.
 
 ## License
 
