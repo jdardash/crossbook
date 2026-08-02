@@ -51,7 +51,7 @@ namespace detail {
     y -= m <= 2;
     const std::int64_t era = (y >= 0 ? y : y - 399) / 400;
     const auto yoe = static_cast<unsigned>(y - era * 400);                    // [0, 399]
-    const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;      // [0, 365]
+    const unsigned doy = (153 * (m > 2 ? m - 3 : m + 9) + 2) / 5 + d - 1;     // [0, 365]
     const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;               // [0, 146096]
     return era * 146097 + static_cast<std::int64_t>(doe) - 719468;
 }

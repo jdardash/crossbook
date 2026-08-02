@@ -589,7 +589,15 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install the pinned clang-format
-        run: pip install "clang-format==18.1.8"
+        # The pip wheel ships only the clang-format binary; clang-format-diff
+        # is fetched from the same pinned LLVM tag so the two cannot disagree.
+        # (The first version of this job called a script the wheel does not
+        # contain, so the gate exited 127 on every push and had never actually
+        # checked anything.)
+        run: |
+          pip install "clang-format==18.1.8"
+          curl -sSfL -o clang-format-diff.py \
+            https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-18.1.8/clang/tools/clang-format/clang-format-diff.py
       - name: Check the lines this change touches
         shell: bash
         run: |
@@ -601,7 +609,8 @@ jobs:
             BASE="$(git rev-parse HEAD^)"
           fi
           git diff -U0 --no-color "$BASE" -- '*.hpp' '*.cpp' > changed.diff
-          clang-format-diff -p1 -style=file < changed.diff > format.patch
+          python clang-format-diff.py -p1 -style=file -binary "$(command -v clang-format)" \
+            < changed.diff > format.patch
           if [ -s format.patch ]; then
             echo "::error::clang-format disagrees with lines this change touches"
             cat format.patch
