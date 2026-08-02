@@ -366,8 +366,8 @@ TEST_CASE("Feed::handle does not allocate on the applied path", "[alloc][feed]")
     const std::string snapshot =
         std::string(R"({"channel":"book","type":"snapshot","data":[{"symbol":"BTC/USD",)") +
         R"("asks":[{"price":45283.6,"qty":0.30000000}],)" +
-        R"("bids":[{"price":45283.5,"qty":0.50000000}],)" + R"("checksum":)" +
-        std::to_string(crc) + R"(,"timestamp":"2026-07-31T12:00:00.000000Z")" + "}]}";
+        R"("bids":[{"price":45283.5,"qty":0.50000000}],)" + R"("checksum":)" + std::to_string(crc) +
+        R"(,"timestamp":"2026-07-31T12:00:00.000000Z")" + "}]}";
     REQUIRE(feed.handle(snapshot) == FeedStatus::kApplied);
 
     // An update that re-states the same levels leaves the book unchanged, so
@@ -376,8 +376,8 @@ TEST_CASE("Feed::handle does not allocate on the applied path", "[alloc][feed]")
     const std::string update =
         std::string(R"({"channel":"book","type":"update","data":[{"symbol":"BTC/USD",)") +
         R"("bids":[{"price":45283.5,"qty":0.50000000}],)" +
-        R"("asks":[{"price":45283.6,"qty":0.30000000}],)" + R"("checksum":)" +
-        std::to_string(crc) + R"(,"timestamp":"2026-07-31T12:00:01.000000Z")" + "}]}";
+        R"("asks":[{"price":45283.6,"qty":0.30000000}],)" + R"("checksum":)" + std::to_string(crc) +
+        R"(,"timestamp":"2026-07-31T12:00:01.000000Z")" + "}]}";
 
     for (int i = 0; i < 100; ++i) {
         REQUIRE(feed.handle(update) == FeedStatus::kApplied);
