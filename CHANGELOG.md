@@ -19,6 +19,22 @@ only entries that can cost a reader an afternoon.
 
 ### Added
 
+- `net::ByteBuffer`: a `std::vector<char>` whose `resize` default-initializes
+  instead of zeroing. The frame reader and the Schannel backend grow their
+  receive buffers by a 32 KiB chunk on every socket read and trim back to what
+  arrived; with a plain vector that was 32 KiB of memset per read, all of it
+  over bytes the transport was about to overwrite.
+- `CROSSBOOK_NATIVE` and the `release-native` preset: opt-in `-march=native`
+  (`/arch:AVX2` on MSVC) plus LTO, for measuring the ceiling on one's own
+  hardware. Off by default, and the README's numbers stay on plain release,
+  because a binary tuned to the build machine dies on the next machine.
+- The no-allocation probe now covers the decoder, `Feed::handle` end to end
+  with the checksum verified, and the frame reader's poll loop. It covered
+  the book — 0.3% of the frame — while the claim it enforces is about the
+  whole hot path.
+- `LATENCY-ROADMAP.md`: where the gap to professional software trading
+  systems actually is (environment tail, JSON ceiling, compute already
+  competitive) and the phase order for closing it, with sources.
 - `json::for_each_member`: walk an object's members once, in wire order,
   dispatching on key. A completed walk carries `well_formed`'s full guarantee,
   which is what lets the decoders below drop their separate validation pass.
@@ -40,6 +56,12 @@ only entries that can cost a reader an afternoon.
 
 ### Changed
 
+- The Schannel decrypt path copies plaintext once, straight into the caller's
+  buffer, instead of twice through an intermediate; and the unconsumed tail of
+  a pipelined TLS record is moved in place rather than through a freshly
+  allocated vector, which was a heap allocation on the common path — a busy
+  feed routinely lands the next record behind the current one in the same
+  segment.
 - Both venue decoders are single-pass. A Kraken frame was being walked ~9x —
   a `well_formed` pre-pass plus a `find` restart per field, with `checksum`
   and `timestamp` spelled after the level arrays on the wire so each of those
