@@ -609,8 +609,17 @@ jobs:
             BASE="$(git rev-parse HEAD^)"
           fi
           git diff -U0 --no-color "$BASE" -- '*.hpp' '*.cpp' > changed.diff
+          # clang-format-diff exits 1 when it produces a fix, which under
+          # `set -e` killed this step before the message and the patch could
+          # print. Exit 1 with a patch is the finding; anything else is the
+          # tool itself failing and must stay fatal.
+          status=0
           python clang-format-diff.py -p1 -style=file -binary "$(command -v clang-format)" \
-            < changed.diff > format.patch
+            < changed.diff > format.patch || status=$?
+          if [ "$status" -ne 0 ] && [ ! -s format.patch ]; then
+            echo "::error::clang-format-diff itself failed (exit $status)"
+            exit "$status"
+          fi
           if [ -s format.patch ]; then
             echo "::error::clang-format disagrees with lines this change touches"
             cat format.patch
