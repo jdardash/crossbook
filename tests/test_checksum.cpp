@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Josh Dardashti
 
+#include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 #include "crossbook/book.hpp"
 #include "crossbook/checksum.hpp"
@@ -35,6 +37,54 @@ TEST_CASE("Crc32 resets to a clean state", "[checksum]") {
     c.reset();
     c.update("123456789");
     CHECK(c.value() == 0xCBF43926U);
+}
+
+namespace {
+
+/// Byte-at-a-time CRC32 straight off the polynomial, with no tables and no
+/// slicing — the definition, as slowly as possible. The production kernel is
+/// slice-by-8, whose failure modes are all boundary arithmetic: a wrong table,
+/// a swapped lane, a tail entered one byte early. None of those can produce a
+/// value this reference agrees with.
+std::uint32_t crc32_reference(std::string_view s) {
+    std::uint32_t c = 0xFFFFFFFFU;
+    for (const char ch : s) {
+        c ^= static_cast<unsigned char>(ch);
+        for (int k = 0; k < 8; ++k) {
+            c = (c & 1U) ? (0xEDB88320U ^ (c >> 1)) : (c >> 1);
+        }
+    }
+    return c ^ 0xFFFFFFFFU;
+}
+
+}  // namespace
+
+TEST_CASE("sliced CRC32 agrees with the polynomial definition at every length and split",
+          "[checksum]") {
+    // Lengths 0..40 cross every boundary the slice-by-8 kernel has: below one
+    // block, exactly one block, mid-block tails of every residue. The data is
+    // position-dependent so a lane swap cannot cancel out.
+    std::string data;
+    for (int i = 0; i < 40; ++i) {
+        data.push_back(static_cast<char>('0' + (i * 7 + 3) % 75));
+    }
+    for (std::size_t len = 0; len <= data.size(); ++len) {
+        const std::string_view s{data.data(), len};
+        CAPTURE(len);
+        CHECK(crc32(s) == crc32_reference(s));
+
+        // Split across two updates at every point, so a partial block carried
+        // between calls is also exercised — that is how the verifier feeds it.
+        for (std::size_t cut = 0; cut <= len; ++cut) {
+            Crc32 split;
+            split.update(s.substr(0, cut));
+            split.update(s.substr(cut));
+            if (split.value() != crc32_reference(s)) {
+                CAPTURE(cut);
+                REQUIRE(split.value() == crc32_reference(s));
+            }
+        }
+    }
 }
 
 namespace {
