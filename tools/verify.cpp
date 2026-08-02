@@ -51,6 +51,8 @@ struct Options {
     std::size_t max_divergences = 20;
     std::size_t depth = 0;
     bool latency = false;
+    bool sweep = false;
+    std::uint64_t sweep_bound_ns = 100'000;
     double speed = 1.0;
     int pin_core = -1;
     bool realtime = false;
@@ -67,6 +69,8 @@ void usage() {
         "  --show N          divergences to print         (default 20)\n"
         "  --latency         also run an open-loop replay and report percentiles\n"
         "  --speed X         replay speed multiplier for --latency (default 1.0)\n"
+        "  --sweep           replay across a ladder of speeds; report latency vs offered rate\n"
+        "  --sweep-bound NS  p99 bound in ns that defines the knee (default 100000)\n"
         "  --pin N           pin to one CPU core, so migration is not read as latency\n"
         "  --realtime        raise priority for the measurement\n"
         "\n"
@@ -109,6 +113,12 @@ void usage() {
             out.realtime = true;
         } else if (arg == "--latency") {
             out.latency = true;
+        } else if (arg == "--sweep") {
+            out.sweep = true;
+        } else if (arg == "--sweep-bound") {
+            const char* v = next();
+            if (v == nullptr) return false;
+            out.sweep_bound_ns = static_cast<std::uint64_t>(std::atoll(v));
         } else if (arg == "--speed") {
             const char* v = next();
             if (v == nullptr) return false;
@@ -164,6 +174,31 @@ void usage() {
 #else
     return false;
 #endif
+}
+
+/// Print the machine-state conditions a measurement ran under, applying them
+/// in the process.
+///
+/// Shared by --latency and --sweep so the two can never drift apart in what
+/// they claim. The rule is the same for both: a latency figure whose
+/// measurement conditions are unstated is not a measurement, and a pinning
+/// call that silently failed would make the stated conditions a lie rather
+/// than merely absent. Calling this twice (both flags given) is harmless —
+/// re-pinning to the same core and re-raising to the same priority are
+/// idempotent.
+void report_conditions(const Options& options) {
+    if (options.pin_core >= 0) {
+        std::printf("  core     %s %d\n",
+                    pin_to_core(options.pin_core) ? "pinned to" : "PIN FAILED for",
+                    options.pin_core);
+    } else {
+        std::puts("  core     not pinned (pass --pin N)");
+    }
+    if (options.realtime) {
+        std::printf("  priority %s\n", raise_priority() ? "raised" : "RAISE FAILED, normal");
+    } else {
+        std::puts("  priority normal (pass --realtime)");
+    }
 }
 
 /// Escape and clip a payload so a divergence line stays readable.
@@ -310,22 +345,8 @@ int main(int argc, char** argv) {
         // needs the original arrival timing.
         std::puts("\nlatency (open-loop, measured against the recorded schedule)");
 
-        // Report the conditions next to the numbers. A latency figure whose
-        // measurement conditions are unstated is not a measurement, and a
-        // pinning call that silently failed would make the stated conditions a
-        // lie rather than merely absent.
-        if (options.pin_core >= 0) {
-            std::printf("  core     %s %d\n",
-                        pin_to_core(options.pin_core) ? "pinned to" : "PIN FAILED for",
-                        options.pin_core);
-        } else {
-            std::puts("  core     not pinned (pass --pin N)");
-        }
-        if (options.realtime) {
-            std::printf("  priority %s\n", raise_priority() ? "raised" : "RAISE FAILED, normal");
-        } else {
-            std::puts("  priority normal (pass --realtime)");
-        }
+        // Report the conditions next to the numbers — see report_conditions.
+        report_conditions(options);
 
         KrakenFeed timed("kraken",
                          venues::KrakenBookDecoder(InstrumentSpec{
@@ -356,6 +377,102 @@ int main(int argc, char** argv) {
                 "  These percentiles describe a saturated system, not steady state.\n",
                 static_cast<unsigned long long>(result.behind_schedule),
                 static_cast<unsigned long long>(result.max_lateness));
+        }
+    }
+
+    if (options.sweep) {
+        // The rate-vs-latency curve: replay the capture at each rung of a
+        // ladder of speed multipliers and report latency against offered
+        // rate. Latency stays flat while there is headroom and diverges near
+        // saturation; the artifact is the curve plus the knee — the highest
+        // rate that kept pace with p99 under the stated bound. A single-rate
+        // run cannot show either.
+        std::puts("\nrate-vs-latency sweep (open-loop per rate, default ladder up to 1000x)");
+        report_conditions(options);
+
+        SweepOptions sweep_options;
+        sweep_options.p99_bound_ns = options.sweep_bound_ns;
+        // Same warm-up policy as --latency: cold caches are not tail latency.
+        sweep_options.warmup_events = std::min<std::size_t>(capture.size() / 20, 500);
+
+        std::printf(
+            "  knee bound p99 <= %llu ns; sample target %llu per rate; budget %.1f s per rate\n",
+            static_cast<unsigned long long>(sweep_options.p99_bound_ns),
+            static_cast<unsigned long long>(sweep_options.min_samples),
+            static_cast<double>(sweep_options.budget_ns_per_rate) / 1e9);
+
+        // One feed across the whole ladder, exactly as --latency uses one
+        // feed across its run: each tiled copy of the capture begins with the
+        // capture's snapshot, which re-syncs the book the same way
+        // reconnecting to the venue would.
+        KrakenFeed swept("kraken",
+                         venues::KrakenBookDecoder(InstrumentSpec{
+                             options.symbol, options.price_scale, options.qty_scale}),
+                         SequencePolicy::kStrictIncrement, options.depth);
+
+        const SweepResult sweep = replay_sweep(
+            capture.events(), [&](const ReplayEvent& e) { (void)swept.handle(e.frame); },
+            sweep_options);
+
+        if (sweep.points.empty()) {
+            std::puts("\n  capture too short to sweep: a rate needs at least two frames");
+        } else {
+            std::puts(
+                "\n   speed  offered(msg/s)  achieved(msg/s)     p50(ns)     p99(ns)"
+                "   p99.9(ns)     max(ns)         n  kept_pace");
+            bool any_thin_tail = false;
+            for (const SweepPoint& p : sweep.points) {
+                std::printf("  %5.0fx %15.0f %16.0f %11llu %11llu %11llu %11llu %9llu  %s%s\n",
+                            p.speed, p.offered_rate, p.achieved_rate,
+                            static_cast<unsigned long long>(p.result.latency.p50),
+                            static_cast<unsigned long long>(p.result.latency.p99),
+                            static_cast<unsigned long long>(p.result.latency.p999),
+                            static_cast<unsigned long long>(p.result.latency.max),
+                            static_cast<unsigned long long>(p.result.events),
+                            p.result.kept_pace() ? "yes" : "no",
+                            p.tail_honest() ? "" : "  *");
+                if (!p.tail_honest()) {
+                    any_thin_tail = true;
+                }
+            }
+            if (any_thin_tail) {
+                std::printf(
+                    "\n  * n < %llu: too few samples to resolve a p99.9 at this rate;"
+                    " read p50/p99 only.\n",
+                    static_cast<unsigned long long>(kHonestTailSamples));
+            }
+            if (sweep.stopped_early) {
+                std::puts(
+                    "  ladder stopped early: the consumer had fallen behind hard, and faster"
+                    " rungs would only measure a deeper backlog of the same failure.");
+            }
+
+            // The one-line conclusion. Every branch states the p99 bound the
+            // verdict was judged against, because "sustained X msg/s" is only
+            // a claim when its condition travels with it.
+            if (sweep.has_knee()) {
+                const SweepPoint& k = sweep.points[sweep.knee];
+                if (sweep.knee + 1 < sweep.points.size()) {
+                    std::printf(
+                        "\n  sustained %.0f msg/s with p99 = %.1f us; knee between %.0f and"
+                        " %.0f msg/s\n",
+                        k.offered_rate,
+                        static_cast<double>(k.result.latency.p99) / 1000.0,
+                        k.offered_rate, sweep.points[sweep.knee + 1].offered_rate);
+                } else {
+                    std::printf(
+                        "\n  sustained %.0f msg/s with p99 = %.1f us; no knee inside the swept"
+                        " range, every rung kept pace\n",
+                        k.offered_rate,
+                        static_cast<double>(k.result.latency.p99) / 1000.0);
+                }
+            } else {
+                std::printf(
+                    "\n  did not sustain even %.0f msg/s, the lowest swept rate, with p99 <="
+                    " %llu ns\n",
+                    sweep.points.front().offered_rate,
+                    static_cast<unsigned long long>(sweep.p99_bound_ns));
+            }
         }
     }
 
