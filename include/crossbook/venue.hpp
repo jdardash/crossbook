@@ -44,6 +44,21 @@ enum class DecodeError : std::uint8_t {
     kBadSequence,
     /// More levels in one message than the decoder is configured to hold.
     kTooManyLevels,
+    /// A price or quantity parsed exactly but was not spelled canonically at
+    /// the instrument's scale — "0.5" where the scale is 8. Distinct from
+    /// kPrecisionLoss because the value is representable; what is wrong is the
+    /// spelling, and Kraken's checksum is computed from the spelling. See
+    /// fixed.hpp `is_canonical_at_scale`.
+    kNonCanonical,
+    /// A checksum field was present but could not be read as a uint32. Never
+    /// reported for an absent checksum: absence means verification cannot run
+    /// for this message, whereas an unreadable one means the venue changed a
+    /// field we verify against and we no longer understand it.
+    kBadChecksum,
+    /// A timestamp field was missing or not RFC3339. Fatal because a venue whose
+    /// timestamps we cannot read has no staleness detection at all, and a feed
+    /// that cannot go stale is a feed that will serve an hour-old book.
+    kBadTimestamp,
 };
 
 [[nodiscard]] constexpr std::string_view to_string(DecodeError e) noexcept {
@@ -58,6 +73,12 @@ enum class DecodeError : std::uint8_t {
             return "bad_sequence";
         case DecodeError::kTooManyLevels:
             return "too_many_levels";
+        case DecodeError::kNonCanonical:
+            return "non_canonical";
+        case DecodeError::kBadChecksum:
+            return "bad_checksum";
+        case DecodeError::kBadTimestamp:
+            return "bad_timestamp";
     }
     return "unknown";
 }
@@ -90,8 +111,13 @@ struct DecodedMessage {
 
     std::vector<LevelUpdate> levels;
 
-    /// The offending token, when `error` is kPrecisionLoss. Without it a
-    /// precision change is an unexplained collapse in match rate.
+    /// The offending token, when `error` is kPrecisionLoss or kNonCanonical.
+    /// Without it a precision change is an unexplained collapse in match rate.
+    ///
+    /// Also carries the venue's own error text when `kind` is kVenueError: the
+    /// thing that went wrong is then a message rather than a token, but it needs
+    /// reporting through the same channel, and a second near-identical field
+    /// would only invite setting the wrong one.
     std::string_view bad_token;
 
     [[nodiscard]] bool ok() const noexcept { return error == DecodeError::kOk; }

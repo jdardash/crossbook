@@ -41,7 +41,7 @@ std::string kraken_snapshot(std::uint32_t checksum) {
     return std::string(R"({"channel":"book","type":"snapshot","data":[{"symbol":"BTC/USD",)") +
            R"("asks":[{"price":45283.6,"qty":0.30000000}],)" +
            R"("bids":[{"price":45283.5,"qty":0.50000000}],)" + R"("checksum":)" +
-           std::to_string(checksum) + "}]}";
+           std::to_string(checksum) + R"(,"timestamp":"2026-07-31T12:00:00.000000Z")" + "}]}";
 }
 
 /// The checksum Kraken would publish for the book that snapshot produces.
@@ -238,7 +238,8 @@ TEST_CASE("a precision change is recorded with the offending token", "[feed]") {
     // price_scale is 1; this update carries two decimals.
     constexpr std::string_view frame =
         R"({"channel":"book","type":"update","data":[{"symbol":"BTC/USD",)"
-        R"("bids":[{"price":45283.55,"qty":0.5}]}]})";
+        R"("timestamp":"2026-07-31T12:00:01.000000Z",)"
+        R"("bids":[{"price":45283.55,"qty":0.50000000}]}]})";
     CHECK(feed.handle(frame) == FeedStatus::kRejected);
     CHECK(feed.divergences().count(DivergenceKind::kPrecisionLoss) == 1);
     CHECK(feed.divergences().entries().back().detail == "45283.55");
@@ -265,6 +266,103 @@ TEST_CASE("a silent feed goes stale", "[feed]") {
     CHECK(feed.check_staleness(last + 60'000'000'000, 5'000'000'000));   // 60s later: stale.
     CHECK_FALSE(feed.synced());
     CHECK(feed.divergences().count(DivergenceKind::kStaleFeed) == 1);
+}
+
+TEST_CASE("a silent Kraken feed goes stale", "[feed][kraken][staleness]") {
+    // check_staleness was STRUCTURALLY DEAD on Kraken: the decoder never parsed
+    // the RFC3339 timestamp, so msg.ts was always 0, so last_ts_ stayed 0, so
+    // the `last_ts_ == 0` guard returned false on every call. An hour of silence
+    // left synced() true and nothing in the divergence log. The only staleness
+    // test used Binance, which does parse its event time, so CI was green.
+    auto feed = make_kraken();
+    REQUIRE(feed.handle(kraken_snapshot(expected_snapshot_checksum())) == FeedStatus::kApplied);
+
+    const Timestamp last = feed.book().last_update();
+    REQUIRE(last != 0);  // The precondition the whole check depends on.
+
+    CHECK_FALSE(feed.check_staleness(last + 1'000'000, 5'000'000'000));  // 1ms later: fine.
+    CHECK(feed.check_staleness(last + 3'600'000'000'000, 5'000'000'000));  // An hour: stale.
+    CHECK_FALSE(feed.synced());
+    CHECK(feed.divergences().count(DivergenceKind::kStaleFeed) == 1);
+}
+
+TEST_CASE("a venue error is recorded, not counted as a heartbeat", "[feed][error]") {
+    // MessageKind::kVenueError existed and was never produced, and the feed
+    // lumped it in with kIgnored. A subscription rejected for an unknown pair
+    // therefore looked exactly like a quiet market: the feed never synced, and
+    // nothing anywhere said why.
+    auto feed = make_kraken();
+    const std::string frame =
+        R"({"error":"Subscription failed: unknown pair","method":"subscribe",)"
+        R"("success":false,"req_id":7})";
+
+    CHECK(feed.handle(frame) == FeedStatus::kRejected);
+    CHECK(feed.stats().venue_errors == 1);
+    CHECK(feed.stats().ignored == 0);  // Not a heartbeat.
+    REQUIRE(feed.divergences().count(DivergenceKind::kVenueError) == 1);
+    CHECK(feed.divergences().entries().back().detail == "Subscription failed: unknown pair");
+    CHECK_FALSE(feed.synced());
+}
+
+TEST_CASE("a Binance venue error is recorded too", "[feed][binance][error]") {
+    auto feed = make_binance();
+    CHECK(feed.handle(R"({"code":-1121,"msg":"Invalid symbol."})") == FeedStatus::kRejected);
+    CHECK(feed.stats().venue_errors == 1);
+    REQUIRE(feed.divergences().count(DivergenceKind::kVenueError) == 1);
+    CHECK(feed.divergences().entries().back().detail == "Invalid symbol.");
+}
+
+TEST_CASE("a foreign symbol never reaches the book", "[feed][symbol]") {
+    // End to end over the routing fix: the frame from the audit, fed to a
+    // BTCUSDT feed. It used to be applied, leaving a 3000.00 bid that the venue
+    // has no reason to ever delete.
+    auto feed = make_binance();
+    const DecodedMessage& snap = feed.decoder().decode_snapshot(
+        R"({"lastUpdateId":100,"bids":[["45283.50","1.00000000"]],"asks":[]})");
+    REQUIRE(feed.apply_snapshot(snap) == FeedStatus::kApplied);
+    const std::uint64_t hash_before = feed.book().state_hash();
+
+    const std::string foreign =
+        R"({"stream":"ethusdt@depth","data":{"e":"depthUpdate","E":1,"s":"ETHUSDT",)"
+        R"("U":98,"u":105,"b":[["3000.00","7.00000000"]],"a":[]}})";
+    CHECK(feed.handle(foreign) == FeedStatus::kIgnored);
+    CHECK(feed.book().state_hash() == hash_before);
+    CHECK(feed.book().bids().size() == 1);
+    CHECK(feed.synced());
+
+    // And the matching symbol still applies, so routing did not just mute the
+    // feed entirely.
+    CHECK(feed.handle(binance_update(101, 105)) == FeedStatus::kApplied);
+}
+
+TEST_CASE("match rate measures agreement with the exchange, not frame quality", "[feed]") {
+    // match_rate() divided verified_ by (verified_ + EVERY divergence kind),
+    // so malformed frames and stale-feed markers counted as the exchange
+    // disagreeing with us. One verified snapshot then nine junk frames reported
+    // 0.10 with zero checksum mismatches: 90% claimed disagreement, when
+    // everything actually compared agreed.
+    auto feed = make_kraken();
+    REQUIRE(feed.handle(kraken_snapshot(expected_snapshot_checksum())) == FeedStatus::kApplied);
+    REQUIRE(feed.divergences().verified() == 1);
+
+    for (int i = 0; i < 9; ++i) {
+        CHECK(feed.handle(R"({"channel":"book","type":"update","data":[[)") ==
+              FeedStatus::kRejected);
+    }
+
+    CHECK(feed.stats().checksum_mismatches == 0);
+    CHECK(feed.divergences().count(DivergenceKind::kMalformedMessage) == 9);
+    CHECK(feed.match_rate() == 1.0);  // Nothing compared, disagreed.
+
+    // The junk is not swept under the rug — it is counted and listed, which is
+    // where a caller looks for it.
+    CHECK(feed.divergences().total_recorded() == 9);
+    CHECK(feed.divergences().entries().size() == 9);
+
+    // And a real disagreement still moves the number.
+    (void)feed.handle(kraken_snapshot(0xBADBAD));
+    CHECK(feed.stats().checksum_mismatches == 1);
+    CHECK(feed.match_rate() == 0.5);  // One matched, one did not.
 }
 
 TEST_CASE("invalidate forces recovery on reconnect", "[feed]") {

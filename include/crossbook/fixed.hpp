@@ -114,6 +114,49 @@ constexpr bool checked_add(std::int64_t a, std::int64_t b, std::int64_t& out) no
     return true;
 }
 
+/// Widest string `format_fixed` can produce. A mantissa is at most 19 decimal
+/// digits, and padding to a scale never adds any: the integer part shrinks by
+/// exactly what the fraction gains. So 19 digits, one '.', one '-', and slack.
+inline constexpr std::size_t kMaxFormattedFixed = 24;
+
+/// `format_fixed` written into a caller-owned buffer.
+///
+/// This exists so the ingest-time canonical-spelling guard can run on every
+/// price and quantity without allocating. Returning std::string there would put
+/// two heap allocations per level into the decode hot path, which is the sort of
+/// cost that gets a correctness check quietly disabled later. The formatting
+/// logic lives here, once, and `format_fixed` is a thin wrapper over it, so the
+/// guard and the checksum path can never disagree about what canonical means.
+[[nodiscard]] inline std::string_view format_fixed_into(
+    std::int64_t mantissa, Scale scale, std::array<char, kMaxFormattedFixed>& buf) noexcept {
+    const bool negative = mantissa < 0;
+    // Negating INT64_MIN in signed arithmetic is UB, so take the magnitude in
+    // unsigned space where wraparound is defined. C++20 fixes two's complement
+    // representation, making the conversion exact rather than implementation
+    // defined.
+    const auto bits = static_cast<std::uint64_t>(mantissa);
+    std::uint64_t magnitude = negative ? (0ULL - bits) : bits;
+
+    std::size_t pos = buf.size();
+    for (Scale i = 0; i < scale; ++i) {
+        buf[--pos] = static_cast<char>('0' + magnitude % 10);
+        magnitude /= 10;
+    }
+    if (scale > 0) {
+        buf[--pos] = '.';
+    }
+    // The integer part always contributes at least one digit, so that a value
+    // smaller than the scale renders as "0.00100000" rather than ".00100000".
+    do {
+        buf[--pos] = static_cast<char>('0' + magnitude % 10);
+        magnitude /= 10;
+    } while (magnitude != 0);
+    if (negative) {
+        buf[--pos] = '-';
+    }
+    return std::string_view(buf.data() + pos, buf.size() - pos);
+}
+
 }  // namespace detail
 
 /// Parse a decimal string into a mantissa at `scale`, exactly.
@@ -242,46 +285,42 @@ constexpr bool checked_add(std::int64_t a, std::int64_t b, std::int64_t& out) no
 /// Render a mantissa back to its canonical decimal string at `scale`, with
 /// trailing zeros preserved (0.001 at scale 8 renders as "0.00100000").
 ///
-/// Round-tripping through this is how the decoder proves it understood the
-/// wire representation: see `round_trips()`.
+/// This spelling *is* the definition of canonical that `is_canonical_at_scale`
+/// enforces at ingest.
 [[nodiscard]] inline std::string format_fixed(std::int64_t mantissa, Scale scale) {
-    const bool negative = mantissa < 0;
-    // Negating INT64_MIN in signed arithmetic is UB, so take the magnitude in
-    // unsigned space where wraparound is defined. C++20 fixes two's complement
-    // representation, making the conversion exact rather than implementation
-    // defined.
-    const auto bits = static_cast<std::uint64_t>(mantissa);
-    const std::uint64_t magnitude = negative ? (0ULL - bits) : bits;
-    const auto width = static_cast<std::size_t>(scale);
-
-    std::string digits = std::to_string(magnitude);
-    if (width > 0) {
-        if (digits.size() <= width) {
-            digits.insert(0, width + 1 - digits.size(), '0');
-        }
-        digits.insert(digits.size() - width, 1, '.');
-    }
-    if (negative) {
-        digits.insert(0, 1, '-');
-    }
-    return digits;
+    std::array<char, detail::kMaxFormattedFixed> buf{};
+    return std::string(detail::format_fixed_into(mantissa, scale, buf));
 }
 
-/// True if `text` is exactly representable at `scale` and formats back to an
-/// equivalent decimal value.
+/// True if `text` is spelled exactly as `format_fixed` would spell it at
+/// `scale` — byte for byte, trailing zeros included. A leading '+' is allowed,
+/// because JSON permits it and it carries no information.
 ///
-/// Used on ingest to turn an assumption ("the venue always quotes at the
-/// instrument's documented precision") into a checked invariant. When a venue
-/// changes precision without announcing it, this is what notices.
-[[nodiscard]] inline bool round_trips(std::string_view text, Scale scale) {
+/// WHY THIS IS A BYTE COMPARE AND NOT A NUMERIC ONE:
+///
+/// The predicate this replaced (`round_trips`) parsed, re-formatted, re-parsed
+/// and compared *mantissas*. That is an identity for every input that parses at
+/// all, so it could only ever restate what `parse_fixed` had already reported —
+/// and it could not detect the single failure it existed to guard against.
+/// "0.5" at scale 8 parses exactly, so it "round-tripped"; but Kraken's checksum
+/// is computed from the wire token, giving "5", while the mantissa gives
+/// "50000000". Every checksum then fails against a book that is numerically
+/// perfect, and the symptom — a match rate collapsing for no visible reason —
+/// gives no hint of the cause.
+///
+/// Comparing the bytes is what makes the precondition in `checksum_token` a
+/// checked invariant rather than a hopeful comment. Allocation-free, so it can
+/// run on every level the decoders ingest.
+[[nodiscard]] inline bool is_canonical_at_scale(std::string_view text, Scale scale) noexcept {
+    if (!text.empty() && text.front() == '+') {
+        text.remove_prefix(1);
+    }
     const ParseResult parsed = parse_fixed(text, scale);
     if (!parsed.ok()) {
         return false;
     }
-    // Compare numerically rather than byte-wise: "45285.20" and "45285.2" are
-    // the same value, and only the checksum path cares about the exact spelling.
-    const ParseResult reparsed = parse_fixed(format_fixed(parsed.mantissa, scale), scale);
-    return reparsed.ok() && reparsed.mantissa == parsed.mantissa;
+    std::array<char, detail::kMaxFormattedFixed> buf{};
+    return detail::format_fixed_into(parsed.mantissa, scale, buf) == text;
 }
 
 /// The checksum token for a fixed-point value, per Kraken's algorithm: the
@@ -304,11 +343,12 @@ constexpr bool checked_add(std::int64_t a, std::int64_t b, std::int64_t& out) no
 /// book that is numerically perfect, which is a miserable thing to debug from
 /// the symptom alone.
 ///
-/// `round_trips()` is the guard: run it on ingest and a precision change shows
-/// up as a kPrecisionLoss divergence naming the offending token, instead of as
-/// an unexplained collapse in match rate. Pinned by
+/// `is_canonical_at_scale()` is the guard, and both venue decoders call it on
+/// every price and quantity they ingest. A venue that changes its spelling
+/// therefore surfaces as a kNonCanonical decode error naming the offending
+/// token, rather than as an unexplained collapse in match rate. Pinned by
 /// tests/test_fixed.cpp "the checksum-token identity requires canonical wire
-/// spelling".
+/// spelling" and by the ingest tests in tests/test_venues.cpp.
 [[nodiscard]] inline std::string checksum_token(std::int64_t mantissa) {
     // Negating through the signed type is UB at INT64_MIN, and `-mantissa`
     // there evaluates to itself — so the token came back carrying a '-' into

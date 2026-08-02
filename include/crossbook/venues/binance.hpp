@@ -32,6 +32,13 @@
 //
 // Prices and quantities arrive as JSON *strings* rather than numbers, unlike
 // Kraken. Both are handled by reading the raw token.
+//
+// Combined streams — {"stream":"...","data":{...}} — are unwrapped here, and the
+// symbol inside the envelope is then checked against the instrument this decoder
+// was constructed for. Unwrapping without routing is worse than not supporting
+// combined streams at all: it accepts another instrument's levels and applies
+// them to this book, and the venue never sends a correction for a level it does
+// not know you invented.
 
 #pragma once
 
@@ -87,6 +94,17 @@ public:
 
         const JsonValue event = json::find(payload, "e");
         if (!event) {
+            // Binance reports failures as {"code":-1121,"msg":"Invalid symbol."}
+            // — no "e", so this used to be indistinguishable from an ack. A
+            // subscription that never succeeds then looks exactly like a quiet
+            // market: nothing arrives, nothing is logged, the feed never syncs.
+            const JsonValue code = json::find(payload, "code");
+            const JsonValue msg = json::find(payload, "msg");
+            if (code && code.type == JsonType::kNumber && msg) {
+                message_.kind = MessageKind::kVenueError;
+                message_.bad_token = json::string_body(msg);
+                return message_;
+            }
             message_.kind = MessageKind::kIgnored;  // Ack or pong.
             return message_;
         }
@@ -94,8 +112,27 @@ public:
             message_.kind = MessageKind::kIgnored;
             return message_;
         }
-        message_.kind = MessageKind::kUpdate;
         message_.symbol = json::string_body(json::find(payload, "s"));
+
+        // ROUTE BY SYMBOL. Binance advertises combined streams and this decoder
+        // unwraps the envelope above, but nothing ever checked what was inside
+        // it: an ethusdt@depth frame arriving on a BTCUSDT socket had its levels
+        // applied straight into the BTC book. Nothing later corrects that,
+        // because the venue has no reason to send a delete for a level it does
+        // not know you invented — so the book carries a phantom ETH price until
+        // the next snapshot, and every checksum-free Binance book has no
+        // snapshot until something goes wrong.
+        //
+        // Case-insensitively because Binance uppercases its symbols and a spec
+        // may reasonably be written either way. A foreign symbol is IGNORED, not
+        // rejected: carrying other instruments is what a multiplexed socket is
+        // for, and counting that as an error would bury the real ones.
+        if (!message_.symbol.empty() && !equals_ignore_case(message_.symbol, spec_.symbol)) {
+            message_.kind = MessageKind::kIgnored;
+            message_.symbol = {};
+            return message_;
+        }
+        message_.kind = MessageKind::kUpdate;
 
         // Event time, milliseconds since epoch. Normalised to nanoseconds so
         // no consumer has to remember which venue used which unit.
@@ -126,10 +163,10 @@ public:
         message_.has_ids = true;
 
         if (!decode_side(payload, "b", Side::kBid)) {
-            return message_.ok() ? fail(DecodeError::kMalformed) : message_;
+            return fail_decoded();
         }
         if (!decode_side(payload, "a", Side::kAsk)) {
-            return message_.ok() ? fail(DecodeError::kMalformed) : message_;
+            return fail_decoded();
         }
         return message_;
     }
@@ -156,19 +193,56 @@ public:
         message_.has_ids = true;
 
         if (!decode_side(body, "bids", Side::kBid)) {
-            return message_.ok() ? fail(DecodeError::kMalformed) : message_;
+            return fail_decoded();
         }
         if (!decode_side(body, "asks", Side::kAsk)) {
-            return message_.ok() ? fail(DecodeError::kMalformed) : message_;
+            return fail_decoded();
         }
         return message_;
     }
 
 private:
+    /// ASCII-only case folding. Deliberately not `std::tolower`, which consults
+    /// the global locale and would make symbol routing depend on process-wide
+    /// state — including the Turkish 'I', where a locale-aware fold maps 'I' to
+    /// a dotless form and "BTCUSDT" stops matching itself.
+    [[nodiscard]] static constexpr bool equals_ignore_case(std::string_view a,
+                                                           std::string_view b) noexcept {
+        if (a.size() != b.size()) {
+            return false;
+        }
+        for (std::size_t i = 0; i < a.size(); ++i) {
+            char lhs = a[i];
+            char rhs = b[i];
+            if (lhs >= 'A' && lhs <= 'Z') {
+                lhs = static_cast<char>(lhs - 'A' + 'a');
+            }
+            if (rhs >= 'A' && rhs <= 'Z') {
+                rhs = static_cast<char>(rhs - 'A' + 'a');
+            }
+            if (lhs != rhs) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     [[nodiscard]] const DecodedMessage& fail(DecodeError e) noexcept {
         message_.error = e;
         message_.levels.clear();
         return message_;
+    }
+
+    /// Finish a decode that went wrong partway through a side.
+    ///
+    /// Keeps the specific error a level already reported — kPrecisionLoss and
+    /// kNonCanonical both name the offending token, and flattening them to
+    /// kMalformed would throw that away — but clears the levels either way. A
+    /// message that reports an error must not also hand back the levels it read
+    /// before hitting it: they came from a frame we have just decided we do not
+    /// understand, and fuzz/fuzz_decode.cpp asserts exactly this.
+    [[nodiscard]] const DecodedMessage& fail_decoded() noexcept {
+        return fail(message_.ok() ? DecodeError::kMalformed : message_.error);
     }
 
     /// Levels are two-element arrays of numeric strings: ["price","qty"].
@@ -224,6 +298,26 @@ private:
                 message_.error = (qty.error == ParseError::kPrecisionLoss)
                                      ? DecodeError::kPrecisionLoss
                                      : DecodeError::kMalformed;
+                message_.bad_token = qty_token;
+                failed = true;
+                return false;
+            }
+
+            // Binance publishes no checksum, so a spelling change here cannot
+            // break a verification that does not exist — but it is the earliest
+            // and cheapest signal that the venue altered its precision, and a
+            // consolidated book compares levels across venues that do verify.
+            // The check is the same one Kraken's ingest runs, for the same
+            // reason: an assumption about the wire that nothing tested is an
+            // assumption that will be wrong eventually and silently.
+            if (!is_canonical_at_scale(price_token, spec_.price_scale)) {
+                message_.error = DecodeError::kNonCanonical;
+                message_.bad_token = price_token;
+                failed = true;
+                return false;
+            }
+            if (!is_canonical_at_scale(qty_token, spec_.qty_scale)) {
+                message_.error = DecodeError::kNonCanonical;
                 message_.bad_token = qty_token;
                 failed = true;
                 return false;
