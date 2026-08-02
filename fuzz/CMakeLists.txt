@@ -20,5 +20,9 @@ add_fuzz_target(fuzz_parse_fixed fuzz_parse_fixed.cpp)
 add_fuzz_target(fuzz_book fuzz_book.cpp)
 add_fuzz_target(fuzz_sequence fuzz_sequence.cpp)
 add_fuzz_target(fuzz_decode fuzz_decode.cpp)
+# The scanner gets its own target rather than being reached only through the
+# venue decoders: a decoder that rejects a frame early is a decoder that stops
+# the fuzzer ever reaching the scanner underneath it.
+add_fuzz_target(fuzz_json fuzz_json.cpp)
 add_fuzz_target(fuzz_l3 fuzz_l3.cpp)
 add_fuzz_target(fuzz_ws_frame fuzz_ws_frame.cpp)
