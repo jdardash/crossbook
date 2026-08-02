@@ -156,8 +156,7 @@ TEST_CASE("a nonzero timeout still blocks and still delivers", "[transport]") {
     CHECK(got == 4);
 }
 
-TEST_CASE("the kernel receive timestamp is exposed where the platform has one",
-          "[transport]") {
+TEST_CASE("the kernel receive timestamp is exposed where the platform has one", "[transport]") {
     LoopbackListener listener;
     detail::TcpSocket sock;
     std::string error;
@@ -188,7 +187,7 @@ TEST_CASE("the kernel receive timestamp is exposed where the platform has one",
     const std::int64_t now = std::chrono::duration_cast<std::chrono::nanoseconds>(
                                  std::chrono::system_clock::now().time_since_epoch())
                                  .count();
-    CHECK(now - rx < 5'000'000'000);  // Within 5 s of now.
+    CHECK(now - rx < 5'000'000'000);   // Within 5 s of now.
     CHECK(now - rx > -1'000'000'000);  // And not from the future.
 #else
     // Windows and macOS have no per-segment receive timestamp for TCP that is
