@@ -262,6 +262,13 @@ TEST_CASE("Kraken parses the RFC3339 timestamp to nanoseconds", "[venues][kraken
                  R"("timestamp":"2026-07-31T25:00:00.0Z",)",     // hour 25
                  R"("timestamp":1785499200,)",                   // epoch seconds, not RFC3339
                  R"("timestamp":"not a time",)",
+                 // Far-future years overflowed the seconds-to-nanoseconds
+                 // multiply -- signed overflow, so UB rather than a wrong
+                 // number. Found by fuzz_decode on its first seeded run;
+                 // int64 nanoseconds end in April 2262.
+                 R"("timestamp":"6467-01-01T00:00:00.0Z",)",     // the fuzzer's find
+                 R"("timestamp":"9999-12-31T23:59:59.9Z",)",     // widest 4-digit year
+                 R"("timestamp":"1969-12-31T23:59:59.0Z",)",     // pre-epoch
              }) {
             const std::string frame =
                 std::string(R"({"channel":"book","type":"update","data":[{"symbol":"BTC/USD",)") +
@@ -428,6 +435,30 @@ TEST_CASE("Binance spot depth update decodes", "[venues][binance]") {
     CHECK(msg.levels[0].price.ticks == 4528350);  // 45283.50 at scale 2
     CHECK(msg.levels[1].qty.units == 0);          // Deletion.
     CHECK(msg.levels[2].side == Side::kAsk);
+}
+
+TEST_CASE("Binance event time past the int64 nanosecond horizon is dropped, not scaled",
+          "[venues][binance]") {
+    // 17850644620301 ms is the fuzzer's find: scaled to nanoseconds it
+    // overflows int64, which is UB, not merely a wrong number. The frame still
+    // applies -- sequence ids, not timestamps, decide validity on Binance --
+    // but ts stays 0, which staleness detection already treats as unusable
+    // rather than immortally fresh.
+    constexpr std::string_view frame = R"({
+        "e":"depthUpdate","E":17850644620301,"s":"BTCUSDT",
+        "U":157,"u":160,
+        "b":[["45283.50","0.50000000"]],
+        "a":[["45283.60","0.30000000"]]})";
+
+    BinanceDepthDecoder decoder(btc_usdt(), BinanceMarket::kSpot);
+    const DecodedMessage& msg = decoder.decode(frame);
+
+    REQUIRE(msg.ok());
+    CHECK(msg.kind == MessageKind::kUpdate);
+    CHECK(msg.ts == 0);
+    REQUIRE(msg.levels.size() == 2);
+    CHECK(msg.levels[0].side == Side::kBid);
+    CHECK(msg.levels[1].side == Side::kAsk);
 }
 
 TEST_CASE("Binance combined-stream wrapper is unwrapped", "[venues][binance]") {

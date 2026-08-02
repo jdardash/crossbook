@@ -27,6 +27,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <string_view>
 #include <utility>
 
@@ -150,6 +151,17 @@ namespace detail {
     const std::int64_t seconds =
         days * 86400 + static_cast<std::int64_t>(hour) * 3600 +
         static_cast<std::int64_t>(minute) * 60 + static_cast<std::int64_t>(second);
+
+    // Bounded before scaling: int64 nanoseconds run out in April 2262, so a
+    // year field big enough to overflow the multiply is corruption, not a
+    // time, and pre-epoch is equally garbage from a live venue. fuzz_decode
+    // found the unbounded multiply on its first seeded run -- signed overflow
+    // is UB, not merely a wrong number.
+    constexpr std::int64_t kMaxSeconds =
+        (std::numeric_limits<std::int64_t>::max)() / 1'000'000'000 - 1;
+    if (seconds < 0 || seconds > kMaxSeconds) {
+        return false;
+    }
     out = seconds * 1'000'000'000 + nanos;
     return true;
 }

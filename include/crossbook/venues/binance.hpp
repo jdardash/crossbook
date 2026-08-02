@@ -43,6 +43,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <string_view>
 #include <utility>
 
@@ -57,6 +58,11 @@ enum class BinanceMarket : std::uint8_t {
     kSpot,
     kFutures,
 };
+
+/// Largest millisecond event time that survives normalisation to int64
+/// nanoseconds (April 2262). Anything above is corruption, not a late era.
+inline constexpr std::uint64_t kMaxEventMs =
+    static_cast<std::uint64_t>((std::numeric_limits<Timestamp>::max)() / 1'000'000);
 
 /// Decoder for Binance diff-depth streams.
 class BinanceDepthDecoder {
@@ -218,7 +224,14 @@ public:
         // Event time, milliseconds since epoch. Normalised to nanoseconds so
         // no consumer has to remember which venue used which unit.
         std::uint64_t event_ms = 0;
-        if (json::parse_u64(json::number_token(f.event_ms), event_ms)) {
+        if (json::parse_u64(json::number_token(f.event_ms), event_ms) &&
+            event_ms <= kMaxEventMs) {
+            // Bounded before scaling: int64 nanoseconds run out in April 2262,
+            // and an event time past that is corruption. The frame still
+            // applies -- sequence ids, not timestamps, decide validity here --
+            // but ts stays 0, which staleness detection already treats as
+            // unusable rather than immortally fresh. fuzz_decode found the
+            // unbounded multiply on its first seeded run.
             message_.ts = static_cast<Timestamp>(event_ms) * 1'000'000;
         }
 
