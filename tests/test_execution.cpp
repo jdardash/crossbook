@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
+#include <limits>
 
 #include "crossbook/book.hpp"
 #include "crossbook/execution.hpp"
@@ -32,6 +33,7 @@ TEST_CASE("an empty book has no executable size", "[execution]") {
     CHECK(e.empty());
     CHECK(e.depth_exhausted);
     CHECK(e.levels == 0);
+    CHECK(e.status == ExecutionStatus::kEmptyBook);
 }
 
 TEST_CASE("zero slippage returns only the touch", "[execution]") {
@@ -119,10 +121,166 @@ TEST_CASE("VWAP is size-weighted, not a level average", "[execution]") {
 
     const Execution e = executable_size(book, Side::kAsk, from_percent(100));
     CHECK(e.levels == 2);
-    // Weighted: (452836*10 + 452900*1) / 11 ~= 452841.8 -> truncated 452841.
-    CHECK(e.vwap.ticks == 452841);
+    // Weighted: (452836*10 + 452900*1) / 11 ~= 452841.8 -> 452842 taking the
+    // ask, because a buy-side VWAP rounds UP. See the rounding test below.
+    CHECK(e.vwap.ticks == 452842);
     // An unweighted mean would be (452836+452900)/2 = 452868.
     CHECK(e.vwap.ticks < 452868);
+}
+
+// ---------------------------------------------------------------------------
+// Rounding direction — the one direction a risk number must never round
+// ---------------------------------------------------------------------------
+
+TEST_CASE("VWAP rounds against the taker on both sides", "[execution][rounding]") {
+    // THE DEFECT: integer division truncates toward zero, so a buy-side VWAP of
+    // 453073.99 was reported as 453073. Every walk understated what the trade
+    // would pay, on every venue, always in the trader's favour — and because
+    // the truncation collapses distinct real costs onto one integer, it also
+    // manufactured ties between venues that were not tied.
+    //
+    // Buying rounds UP (cost never understated); selling rounds DOWN (proceeds
+    // never overstated). Both assertions live in one case because the second is
+    // what stops a fix to the first from being applied to both sides blindly.
+    ArrayBook buy_book(spec());
+    buy_book.apply(Side::kAsk, Price{453073}, Qty{1'000'000});   // 0.01
+    buy_book.apply(Side::kAsk, Price{453074}, Qty{99'000'000});  // 0.99
+    // True VWAP = 45307399000000 / 100000000 = 453073.99 exactly.
+    const Execution buy = cost_to_trade(buy_book, Side::kAsk, Qty{100'000'000});
+    REQUIRE(buy.ok());
+    CHECK(buy.vwap == Price{453074});
+
+    ArrayBook sell_book(spec());
+    sell_book.apply(Side::kBid, Price{453074}, Qty{1'000'000});   // 0.01
+    sell_book.apply(Side::kBid, Price{453073}, Qty{99'000'000});  // 0.99
+    // True VWAP = 45307301000000 / 100000000 = 453073.01 exactly.
+    const Execution sell = cost_to_trade(sell_book, Side::kBid, Qty{100'000'000});
+    REQUIRE(sell.ok());
+    CHECK(sell.vwap == Price{453073});
+
+    // Same rule on the slippage-budget walk, which shares the helper.
+    const Execution walked = executable_size(buy_book, Side::kAsk, from_percent(100));
+    REQUIRE(walked.ok());
+    CHECK(walked.vwap == Price{453074});
+}
+
+TEST_CASE("the rounding helpers round the direction they claim", "[execution][rounding]") {
+    CHECK(detail::ceil_div(7, 2) == 4);
+    CHECK(detail::floor_div(7, 2) == 3);
+    CHECK(detail::ceil_div(-7, 2) == -3);
+    CHECK(detail::floor_div(-7, 2) == -4);
+    CHECK(detail::div_away_from_zero(7, 2) == 4);
+    CHECK(detail::div_away_from_zero(-7, 2) == -4);
+    CHECK(detail::div_away_from_zero(8, 2) == 4);  // Exact: no nudge.
+}
+
+// ---------------------------------------------------------------------------
+// Guarded arithmetic
+// ---------------------------------------------------------------------------
+
+TEST_CASE("the signed multiply guard catches what the shared one cannot",
+          "[execution][overflow]") {
+    // fixed.hpp's checked_mul tests `a > kMax / b`, which is only a valid
+    // overflow test for non-negative operands: with b negative the division
+    // truncates the other way and the test flips sense. That header is not ours
+    // to change, so the guard is at the call site — and this pins the reason it
+    // has to be, rather than leaving a future reader to assume checked_mul is
+    // sound everywhere.
+    constexpr std::int64_t kMin = std::numeric_limits<std::int64_t>::min();
+    std::int64_t out = 0;
+
+    // Demonstrated on the safe side of the fault: `5 * -1` is perfectly
+    // representable, and the shared helper reports it as an overflow because
+    // `kMax / -1` is a large negative number. The same flipped comparison waves
+    // a genuinely wrapping product through in the other direction — not
+    // exercised here, because doing so would be the signed overflow it fails to
+    // detect.
+    CHECK_FALSE(detail::checked_mul(5, -1, out));
+    REQUIRE(detail::checked_mul_signed(5, -1, out));
+    CHECK(out == -5);
+
+    // And it still agrees on the ordinary cases.
+    REQUIRE(detail::checked_mul_signed(452836, -2600, out));
+    CHECK(out == -1'177'373'600);
+    CHECK_FALSE(detail::checked_mul_signed(kMin, 1, out));  // Magnitude unrepresentable.
+
+    CHECK(detail::checked_add_signed(kMin + 1, -1, out));
+    CHECK_FALSE(detail::checked_add_signed(kMin, -1, out));
+    CHECK_FALSE(detail::checked_sub_signed(1, kMin, out));
+    REQUIRE(detail::checked_sub_signed(-1, kMin, out));
+    CHECK(out == std::numeric_limits<std::int64_t>::max());
+}
+
+TEST_CASE("a wrapping price limit is refused, not silently emptied",
+          "[execution][overflow]") {
+    // THE DEFECT: `touch * slippage` sat OUTSIDE the accumulation loop, upstream
+    // of the overflow guard that exists to prevent exactly this. A wide budget
+    // on a high mantissa wrapped the limit negative, every level then compared
+    // as "beyond" it, and the caller got qty 0 with depth_exhausted == FALSE —
+    // "you asked for a wide slippage budget on a full book, got zero liquidity,
+    // and the flag says depth is fine".
+    ArrayBook book(spec());
+    book.apply(Side::kAsk, Price{4'000'000'000'000LL}, Qty{1});
+
+    const Execution e = executable_size(book, Side::kAsk, 5'000'000);  // 500%
+    CHECK(e.empty());
+    CHECK(e.status == ExecutionStatus::kOverflow);
+    CHECK_FALSE(e.ok());
+}
+
+TEST_CASE("a pathological book returns nothing rather than a wrapped number",
+          "[execution]") {
+    // A confidently wrong notional is worse than an empty answer.
+    ArrayBook book(spec());
+    book.apply(Side::kAsk, Price{4'000'000'000'000LL}, Qty{4'000'000'000'000LL});
+    const Execution e = executable_size(book, Side::kAsk, from_percent(100));
+    CHECK(e.empty());
+    CHECK(e.status == ExecutionStatus::kOverflow);
+}
+
+// ---------------------------------------------------------------------------
+// Status — three different failures used to be one indistinguishable value
+// ---------------------------------------------------------------------------
+
+TEST_CASE("every outcome carries a distinguishable status", "[execution][status]") {
+    // THE DEFECT: an empty book, an overflowing book and a limit that excluded
+    // everything all came back as `Execution{}` — qty 0 with
+    // depth_exhausted == false, which asserts the venue has depth at the exact
+    // moment nothing at all is known about it. `best_execution` then dropped
+    // such a venue with a bare `if (execution.empty()) continue;`.
+    const ArrayBook book = ladder(10);
+
+    CHECK(Execution{}.status == ExecutionStatus::kUnset);  // Nobody produced it.
+
+    ArrayBook empty_book(spec());
+    CHECK(executable_size(empty_book, Side::kAsk, from_bps(1)).status ==
+          ExecutionStatus::kEmptyBook);
+    CHECK(cost_to_trade(empty_book, Side::kAsk, Qty{100}).status ==
+          ExecutionStatus::kEmptyBook);
+
+    ArrayBook wrapping(spec());
+    wrapping.apply(Side::kAsk, Price{4'000'000'000'000LL}, Qty{4'000'000'000'000LL});
+    CHECK(executable_size(wrapping, Side::kAsk, from_percent(100)).status ==
+          ExecutionStatus::kOverflow);
+    CHECK(cost_to_trade(wrapping, Side::kAsk, Qty{4'000'000'000'000LL}).status ==
+          ExecutionStatus::kOverflow);
+
+    CHECK(cost_to_trade(book, Side::kAsk, Qty{0}).status == ExecutionStatus::kInvalidRequest);
+    CHECK(executable_size(book, Side::kAsk, -1).status == ExecutionStatus::kInvalidRequest);
+
+    CHECK(cost_to_trade(book, Side::kAsk, Qty{100'000'000}).status == ExecutionStatus::kOk);
+}
+
+TEST_CASE("a negative slippage budget is refused rather than answered with zero",
+          "[execution][status]") {
+    // A negative budget produced an inverted limit, which excluded the whole
+    // book, which was reported as "no size available" — a garbage input
+    // answered with a confident number instead of a refusal.
+    const ArrayBook book = ladder(10);
+    const Execution e = executable_size(book, Side::kAsk, from_bps(-5));
+    CHECK(e.empty());
+    CHECK(e.status == ExecutionStatus::kInvalidRequest);
+    CHECK_FALSE(e.depth_exhausted);  // No claim is being made about depth.
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +306,25 @@ TEST_CASE("cost_to_trade partially fills rather than inventing depth", "[executi
     CHECK(e.depth_exhausted);
     CHECK(e.qty == Qty{200'000'000});  // Only what was actually there.
     CHECK(e.levels == 2);
+    CHECK(e.status == ExecutionStatus::kOk);  // A partial fill is a real answer.
+}
+
+TEST_CASE("wanting exactly the whole book is a complete fill, not an exhausted one",
+          "[execution]") {
+    // The boundary between "filled it all" and "ran out": off by one here and
+    // every venue that can fill the size exactly gets ranked as a partial by
+    // best_execution, which prefers complete fills unconditionally.
+    const ArrayBook book = ladder(3);  // 3.0 units on each side.
+
+    const Execution exact = cost_to_trade(book, Side::kAsk, Qty{300'000'000});
+    CHECK(exact.qty == Qty{300'000'000});
+    CHECK_FALSE(exact.depth_exhausted);
+    CHECK(exact.levels == 3);
+    CHECK(exact.status == ExecutionStatus::kOk);
+
+    const Execution one_more = cost_to_trade(book, Side::kAsk, Qty{300'000'001});
+    CHECK(one_more.qty == Qty{300'000'000});
+    CHECK(one_more.depth_exhausted);
 }
 
 TEST_CASE("cost_to_trade on an empty book reports nothing available", "[execution]") {
@@ -161,6 +338,7 @@ TEST_CASE("cost_to_trade rejects non-positive size", "[execution]") {
     const ArrayBook book = ladder(10);
     CHECK(cost_to_trade(book, Side::kAsk, Qty{0}).empty());
     CHECK(cost_to_trade(book, Side::kAsk, Qty{-5}).empty());
+    CHECK(cost_to_trade(book, Side::kAsk, Qty{-5}).status == ExecutionStatus::kInvalidRequest);
 }
 
 TEST_CASE("slippage rises with size", "[execution]") {
@@ -212,14 +390,6 @@ TEST_CASE("results are identical across both book implementations", "[execution]
         CHECK(a.vwap == b.vwap);
         CHECK(a.levels == b.levels);
         CHECK(a.depth_exhausted == b.depth_exhausted);
+        CHECK(a.status == b.status);
     }
-}
-
-TEST_CASE("a pathological book returns nothing rather than a wrapped number",
-          "[execution]") {
-    // A confidently wrong notional is worse than an empty answer.
-    ArrayBook book(spec());
-    book.apply(Side::kAsk, Price{4'000'000'000'000LL}, Qty{4'000'000'000'000LL});
-    const Execution e = executable_size(book, Side::kAsk, from_percent(100));
-    CHECK(e.empty());
 }
