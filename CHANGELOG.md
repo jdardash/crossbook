@@ -28,6 +28,15 @@ only entries that can cost a reader an afternoon.
 - `kraken_checksum_payload_into`: the checksum payload written into a
   caller-owned buffer. The verifier and the divergence log's payload now go
   through the same bytes by construction.
+- `replay_sweep` and `crossbook_verify --sweep`: the rate-vs-latency curve
+  over a recorded capture, tiled to at least 10,000 samples per rung, with a
+  stated p99 bound defining the knee, thin-tail rungs footnoted rather than
+  reported, and early stop once the consumer has fallen behind hard. The
+  `ReplayOptions::speed` knob existed from the start; an audit pointed out
+  that nothing ever swept it.
+- `SKIP_RETURN_CODE 4` on test discovery: Catch2 exits 4 on an all-SKIP run,
+  and ctest was reporting the `[timing]` contention probes' honest skips as
+  failures.
 
 ### Changed
 

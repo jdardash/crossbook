@@ -228,46 +228,81 @@ so gap 1 is not a realistic book and is shown only as the best case.
 `std::map` is completely insensitive to sparsity. The array is not: it scans
 empty slots, so at a realistic gap it is **3.2x slower on the checksum and 8.2x
 slower on `top(10)`**. Earlier versions of this table published only the gap-1
-row, which is the array's best case presented as its typical one.
+row, which is the array's best case presented as its typical one. (The
+checksum rows predate the slice-by-8 CRC kernel; making the CRC cheaper grew
+the iteration's share, so the sparsity penalty measured after that change is
+larger — 4.1x — not smaller. The direction of the conclusion is unchanged:
+sparse reads are the array's weakness and the map's strength.)
 
 The touch read is a genuine tie. The previous table claimed `1.33 ns` against
 `2.67 ns` and conceded a 2x read loss — that was two different units compared
 against each other, one of them measured with the work hoisted out of the loop
 by an incorrect `DoNotOptimize`. Fixing the benchmark removed the loss.
 
-**What the write speedup is actually for.** Across a whole Kraken frame,
-measured end to end:
+**The whole frame, end to end.** `Feed::handle` — JSON decode, RFC 8259 scalar
+validation, symbol routing, canonical-spelling guards, timestamp parse,
+sequence check, book update, depth trim, and CRC32 verification of the result
+against the exchange — measured per frame on a 200-level book:
+
+| | per frame | frames/s (single thread) |
+|---|---|---|
+| 1-level update (the common case) | **~2.1 us** | **~480,000** |
+| 10-level update | ~4.5-10.6 us | ~100,000-230,000 |
+
+Every one of those frames has its checksum recomputed and compared. The
+handlers cited at the top of this README make that verification an opt-in flag
+because it costs them 10-100 us per update; here the *entire* frame — decode
+included — costs a fifth of their verification step alone.
+
+**Where the frame's cost lives now** (one quiet-machine run, per-family):
 
 | Stage | ns | share |
 |---|---|---|
-| JSON decode, verify, ingest guards | ~2400 | 89% |
-| Kraken checksum | ~420 | 16% |
+| JSON decode + ingest guards | ~1900 | ~75% |
+| Kraken checksum (iterate + CRC) | ~600 | ~25% |
 | book update | ~8 | **0.3%** |
 
-(The stages overlap slightly — each is cheaper in isolation than in sequence,
-because measured alone it gets a warmer cache. `BM_ApplyThenChecksum` exists to
-show that: `apply` costs ~27 ns when the checksum immediately reads memory it
-just dirtied, versus ~8 ns measured on its own.)
+Decode used to be ~2400 ns and 89% of the frame. The fix was not removing the
+guards — the RFC 8259 scalar validation, symbol routing, timestamp parse, and
+canonical-spelling byte-compare are the checks that make the rest of this
+README true, and they stayed. The fix was `json::for_each_member`: the old
+decoder restarted a `find()` from the front of the frame for every field it
+read, and an audit measured one Kraken frame being re-walked **9.3x** —
+`checksum` and `timestamp` are spelled *after* the level arrays on the wire,
+so each of those lookups walked both arrays to reach its key. One member walk,
+with the walk itself carrying the structural validation a separate
+`well_formed` pass used to pay for, removed the redundancy without touching
+what is checked. The CRC kernel also went from byte-at-a-time to slice-by-8
+over one buffered payload (SSE4.2's `crc32` instruction is CRC32C and cannot
+compute Kraken's IEEE polynomial — the header documents the trap).
 
-So swapping the tick-indexed array back for a `std::map` costs a few percent
-end to end, not 8.5x. The array's speedup is not what makes the library fast —
-decode dominates, and that is where the remaining work is. What the speedup
-buys is *headroom*: it is why verifying **every** update is affordable rather
-than sampled, which is the trade this library exists to make and the one the
-handlers cited at the top declined.
+Measured properly — both versions rebuilt and run back to back in the same
+machine state, 9 repetitions each, because this desktop drifts between fast
+and slow states by 2x across a morning:
 
-Decode is also *deliberately* slower than it was. Each frame now validates its
-scalars against RFC 8259, checks the symbol it is routed to, parses the venue
-timestamp so staleness detection can exist at all, and byte-compares every
-price and quantity against its canonical spelling at the instrument's scale.
-Those are the checks that make the rest of this README true; they cost about
-40% of decode and they are not optional. Making decode fast again means a
-single-pass scanner, not removing them.
+| median, same-state A/B | before | after | |
+|---|---|---|---|
+| decode, 1-level frame | 10.7 us | 4.9 us | **2.2x** |
+| decode, 100-level snapshot | 532 us | 247 us | **2.2x** |
+| `Feed::handle`, 1-level frame | 13.5-14.6 us | 5.5-5.9 us | **2.4-2.7x** |
+| `Feed::handle`, 50-level frame | 163-176 us | 64-73 us | **2.2-2.7x** |
 
-**Methodology.** Median of 7 repetitions, Google Benchmark, MSVC 19.50 `/O2`,
-Windows 11, 16 logical cores @ 2995 MHz, on an untuned laptop that was not
+(Those absolutes are from a *slow* machine state; the ~2.1 us figure above is
+the same benchmark in a quiet state. The ratios are the claim, and they hold
+in both states.)
+
+So swapping the tick-indexed array back for a `std::map` still costs a few
+percent end to end, not 8.5x. The array's speedup is not what makes the
+library fast — decode still dominates. What the speedup buys is *headroom*:
+it is why verifying **every** update is affordable rather than sampled, which
+is the trade this library exists to make and the one the handlers cited at the
+top declined.
+
+**Methodology.** Median of 7+ repetitions, Google Benchmark, MSVC 19.50 `/O2`,
+Windows 11, 16 logical cores @ 2995 MHz, on an untuned desktop that was not
 otherwise idle. Read the ratios within a table, not the absolute nanoseconds
-across tables. Reproduce with
+across tables; before/after comparisons are only ever taken from back-to-back
+runs in the same machine state. Reproduce with
 `cmake --preset bench && ./build/bench/bench/crossbook_bench --benchmark_repetitions=7`.
 
 One methodology note that cost real time to learn: **do not run the whole suite
@@ -355,16 +390,18 @@ validation, book update, and CRC32 verification per frame:
 
 | | p50 | p99 | p99.9 | max |
 |---|---|---|---|---|
-| Median of 5 runs, `--realtime` | 15.1 us | 108.9 us | 221.4 us | 281.4 us |
+| Median of 5 runs, `--realtime` | 8.7 us | 62.2 us | 176.9 us | 209.0 us |
 
-An earlier version of this pipeline measured p50 at 2.4 us. The difference is
-not a regression to apologise for: the measured path now contains the scalar
-validation, symbol routing, and canonical-spelling checks that make the
-verification claims above true, and market data arrives in bursts — frames
-captured microseconds apart queue behind each other, and open-loop measurement
-charges that queueing to every frame it delays, by construction. A cheaper
-handler clears the burst faster, which is most of what the old number was
-saying.
+Two waypoints behind that number, both worth keeping. An early version of this
+pipeline measured p50 at 2.4 us — before the scalar validation, symbol
+routing, and canonical-spelling checks that make the verification claims above
+true were on the measured path. Adding them moved p50 to 15.1 us, and that was
+not a regression to apologise for. The single-pass decoder then bought most of
+it back: same guards, same checks, half the walking. Market data arrives in
+bursts — frames captured microseconds apart queue behind each other, and
+open-loop measurement charges that queueing to every frame it delays, by
+construction — so a cheaper handler clears the burst faster, which is what
+the p50 improvement is mostly measuring.
 
 **Pinning a core made this consistently worse**, which was not the expected
 result. `--pin` on a hybrid CPU produced p99 figures two to four orders of
@@ -382,6 +419,44 @@ measuring this desktop.
 
 Earlier versions of this section reported a 3.4 ms max. Most of that was a
 metric bug, not the machine — see below.
+
+### Rate versus latency, because one number is not a curve
+
+A single latency figure at a single rate is how throughput numbers become
+marketing: in an open-arrival system, latency sits flat while there is
+headroom and diverges as the offered rate approaches saturation, so the honest
+artifact is the curve — swept over a recorded real feed, which is the same
+shape as STAC-M1, the industry's feed-handler benchmark. `ReplayOptions::speed`
+existed from the start; an audit pointed out that nothing ever swept it, which
+made it a control that could not fail. Now the tool does:
+
+```bash
+./build/release/tools/crossbook_verify --replay tests/fixtures/kraken_btcusd_l2.cbcap --sweep
+```
+
+One run on this desktop, replaying the committed BTC/USD capture tiled to at
+least 10,000 samples per rung:
+
+| offered (msg/s) | p50 | p99 | n | zero late events |
+|---|---|---|---|---|
+| 5 (recorded pace) | 27.0 us | 69.1 us | 36 | yes |
+| 121 | 24.0 us | 139.0 us | 1,192 | no |
+| 614 | 20.4 us | 138.9 us | 6,124 | no |
+| 1,251 | 23.2 us | 257.9 us | 10,161 | no |
+| 3,128 | 25.6 us | 640.5 us | 10,161 | no |
+| 6,257 | 39.4 us | 911.9 us | 10,161 | no |
+
+The shape is the point: p50 is flat within noise across three orders of
+magnitude of offered rate — the handler is nowhere near compute-bound, as the
+~2 us service time predicts — while the tail grows with rate because every
+scheduling hiccup lands on more queued frames. The strict conclusion the tool
+prints ("sustained 5 msg/s") uses a zero-late-events definition of *sustained*,
+and on a general-purpose OS that mostly measures the scheduler; the p99 column
+is the informative one, and rungs whose sample count cannot resolve a p99.9 are
+footnoted rather than reported. Reading a saturation knee for the *library*
+off this desktop would be dishonest either way — what the sweep demonstrates is
+that the measurement exists, fails when it should, and travels with its
+conditions. Run it on tuned hardware and the knee means something.
 
 ### The metric that reported noise as saturation
 
@@ -528,6 +603,10 @@ for (std::string_view frame : frames_from_your_transport) {
 - [x] Feed handler with resnapshot recovery and staleness detection
 - [x] HDR histogram with coordinated-omission correction
 - [x] Open-loop replay harness measuring against the schedule
+- [x] Rate-vs-latency sweep over a recorded capture (`--sweep`), with honest
+      sample counts and a stated p99 bound
+- [x] Single-pass venue decoders over a one-walk JSON member cursor
+- [x] Slice-by-8 CRC32 over a buffered checksum payload
 - [x] L3 order-by-order book: arena-pooled intrusive queues, open-addressed
       id lookup, and queue position
 - [x] `executable_size` and `cost_to_trade` — what you can actually trade
