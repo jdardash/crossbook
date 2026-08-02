@@ -442,7 +442,9 @@ TEST_CASE("the frame reader poll loop does not allocate in steady state", "[allo
     {
         alloc_probe::Guard guard;
         for (int i = 0; i < 10'000; ++i) {
-            pumped += pump_one() ? 1 : 0;
+            if (pump_one()) {
+                ++pumped;
+            }
         }
         observed = alloc_probe::Guard::count();
     }
