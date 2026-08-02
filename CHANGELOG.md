@@ -17,6 +17,32 @@ only entries that can cost a reader an afternoon.
 
 ## [Unreleased]
 
+### Added
+
+- `json::for_each_member`: walk an object's members once, in wire order,
+  dispatching on key. A completed walk carries `well_formed`'s full guarantee,
+  which is what lets the decoders below drop their separate validation pass.
+- `is_canonical_at_scale(text, scale, mantissa)`: the ingest guard for a token
+  the caller has already parsed, skipping the redundant re-parse. Both
+  overloads share the same definition of canonical and cannot disagree.
+- `kraken_checksum_payload_into`: the checksum payload written into a
+  caller-owned buffer. The verifier and the divergence log's payload now go
+  through the same bytes by construction.
+
+### Changed
+
+- Both venue decoders are single-pass. A Kraken frame was being walked ~9x —
+  a `well_formed` pre-pass plus a `find` restart per field, with `checksum`
+  and `timestamp` spelled after the level arrays on the wire so each of those
+  lookups re-walked both arrays. Decode semantics are pinned unchanged by the
+  existing venue tests, the fuzz corpus, and the committed captures; the
+  duplicate-key first-wins policy and the kIgnored/kMalformed boundaries are
+  additionally pinned by new tests in `test_json.cpp`.
+- CRC32 is slice-by-8 over one buffered payload instead of byte-at-a-time fed
+  ~12 bytes per level. SSE4.2's crc32 instruction remains unusable here — it
+  implements CRC32C, and Kraken checksums with IEEE 0xEDB88320 — and the
+  header now records that so nobody re-attempts it.
+
 ### Changed — breaking for anyone who relied on inherited warning flags
 
 - `crossbook::crossbook` no longer links `crossbook_warnings`, so consuming the
