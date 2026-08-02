@@ -202,21 +202,22 @@ public:
             message_.kind = MessageKind::kIgnored;
             return message_;
         }
-        const std::string_view channel_name = json::string_body(channel);
-        if (channel_name == "status" || channel_name == "heartbeat") {
+        // Compared through string_equals so a legal escape cannot read as a
+        // mismatch. string_body returns empty for an escaped body, which
+        // would route a real book frame to kIgnored.
+        if (json::string_equals(channel, "status") || json::string_equals(channel, "heartbeat")) {
             message_.kind = MessageKind::kIgnored;
             return message_;
         }
-        if (channel_name != "book") {
+        if (!json::string_equals(channel, "book")) {
             message_.kind = MessageKind::kIgnored;
             return message_;
         }
 
         const JsonValue type = json::find(frame, "type");
-        const std::string_view type_name = json::string_body(type);
-        if (type_name == "snapshot") {
+        if (json::string_equals(type, "snapshot")) {
             message_.kind = MessageKind::kSnapshot;
-        } else if (type_name == "update") {
+        } else if (json::string_equals(type, "update")) {
             message_.kind = MessageKind::kUpdate;
         } else {
             message_.kind = MessageKind::kIgnored;
@@ -246,11 +247,19 @@ public:
             if (matched) {
                 return true;  // Keep walking, so the array is still validated.
             }
-            const std::string_view symbol = json::string_body(json::find(entry.raw, "symbol"));
+            const JsonValue symbol_value = json::find(entry.raw, "symbol");
+            std::string_view symbol;
+            const json::StringRead read = json::read_string(symbol_value, symbol);
             // An entry with no symbol at all is treated as ours: that is the
             // only reading available, and rejecting it would turn a shape we
             // have never seen into a hard failure on the strength of a guess.
-            if (!symbol.empty() && symbol != spec_.symbol) {
+            //
+            // An ESCAPED symbol is compared through string_equals rather than
+            // by view. "BTC\/USD" is legal JSON for "BTC/USD", and a raw view
+            // comparison would call it a foreign instrument and silently drop
+            // every frame for the symbol we actually subscribed to.
+            const bool present = read != json::StringRead::kNotAString && !symbol.empty();
+            if (present && !json::string_equals(symbol_value, spec_.symbol)) {
                 return true;  // Some other instrument on a multiplexed socket.
             }
             matched = true;

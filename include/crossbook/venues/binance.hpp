@@ -110,7 +110,10 @@ public:
             message_.kind = MessageKind::kIgnored;  // Ack or pong.
             return message_;
         }
-        if (json::string_body(event) != "depthUpdate") {
+        // string_equals, not string_body: an escaped-but-legal spelling
+        // decodes to empty under string_body, which reads as a mismatch and
+        // silently ignores a frame the venue sent correctly.
+        if (!json::string_equals(event, "depthUpdate")) {
             message_.kind = MessageKind::kIgnored;
             return message_;
         }

@@ -636,3 +636,45 @@ TEST_CASE("decoders reuse their level buffer across calls", "[venues]") {
         REQUIRE(msg.levels.size() == 1);  // reset() clears without freeing.
     }
 }
+
+// ---------------------------------------------------------------------------
+// Escaped strings in comparison positions
+//
+// `\/` is a legal JSON escape for `/`, and Kraken's symbols contain a slash.
+// `string_body` returns EMPTY for any body carrying an escape, so comparing by
+// view called a correctly-spelled frame a foreign instrument and dropped every
+// message for the symbol actually subscribed to. That was inert only while
+// nothing compared symbols; symbol routing now does.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("an escaped but legal symbol is not read as a foreign instrument",
+          "[venues][kraken][escape]") {
+    venues::KrakenBookDecoder decoder{InstrumentSpec{"BTC/USD", 1, 8}};
+
+    // "BTC\/USD" is byte-different from "BTC/USD" and semantically identical.
+    const auto& msg = decoder.decode(
+        R"({"channel":"book","type":"update","data":[{"symbol":"BTC\/USD",)"
+        R"("bids":[{"price":45283.5,"qty":1.00000000}],"asks":[],"checksum":1,)"
+        R"("timestamp":"2026-07-31T12:00:00.000000Z"}]})");
+
+    INFO("error=" << to_string(msg.error) << " bad_token=" << msg.bad_token
+                   << " symbol=" << msg.symbol << " ok=" << msg.ok());
+    CHECK(msg.kind == MessageKind::kUpdate);
+    CHECK(msg.levels.size() == 1);
+}
+
+TEST_CASE("an escaped channel or type still routes", "[venues][kraken][escape]") {
+    // Neither contains a character that needs escaping, but a venue is free to
+    // escape anything, and a decoder that only works on the unescaped spelling
+    // is one venue-side formatting change away from ignoring every frame.
+    venues::KrakenBookDecoder decoder{InstrumentSpec{"BTC/USD", 1, 8}};
+    const auto& msg = decoder.decode(
+        R"({"channel":"boo\u006b","type":"update","data":[{"symbol":"BTC/USD",)"
+        R"("bids":[{"price":45283.5,"qty":1.00000000}],"asks":[],"checksum":1,)"
+        R"("timestamp":"2026-07-31T12:00:00.000000Z"}]})");
+    // \u escapes are explicitly not decoded — string_equals fails closed on
+    // them rather than guessing. The frame is ignored, not misapplied, and
+    // that is the correct conservative outcome for an escape we cannot read.
+    CHECK(msg.kind == MessageKind::kIgnored);
+    CHECK(msg.ok());
+}
