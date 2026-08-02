@@ -33,6 +33,8 @@
 #include <string_view>
 #include <vector>
 
+#include "crossbook/net/byte_buffer.hpp"
+
 namespace crossbook::net {
 
 /// RFC 6455 §5.2 opcodes.
@@ -531,8 +533,12 @@ private:
     static constexpr std::size_t kCompactThreshold = 32 * 1024;
 
     std::size_t max_message_bytes_;
-    std::vector<char> buf_;
-    std::vector<char> assembled_;
+    // ByteBuffer, not std::vector<char>: `writable_tail` grows this by a
+    // 32 KiB read chunk on every transport read and `commit` trims it back,
+    // so a value-initializing resize would memset 32 KiB per read for bytes
+    // recv is about to overwrite.
+    ByteBuffer buf_;
+    ByteBuffer assembled_;
     std::array<char, kMaxControlPayload> control_{};
     std::size_t control_len_{0};
     std::size_t read_pos_{0};
