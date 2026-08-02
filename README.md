@@ -465,9 +465,29 @@ explicit instead of burying it:
 - **Size changes the answer.** A venue can be best on one coin and worst on
   fifty. `best_execution` therefore takes a quantity and walks each venue's real
   depth — a size-free "best venue" is not a well-defined question.
-- **Staleness excludes.** A quiet venue looks exactly like a stable one. Entries
-  past a configured age are dropped rather than quoted.
+- **Staleness excludes, and fails closed.** A quiet venue looks exactly like a
+  stable one, so entries past a configured age are dropped rather than quoted.
+  An *unstamped* quote is unusable rather than immortally fresh, and a
+  timestamp in the future is treated as a clock fault — the failure modes here
+  all had to be inverted, because every one of them originally failed open.
+  `StalenessPolicy::kDisabled` is explicit rather than a magic zero.
 - **Local clocks only.** Venue timestamps are never compared to each other.
+- **Scales must match, and it is checked.** Two venues can quote the same
+  instrument at different price and quantity scales, and comparing their raw
+  mantissas is meaningless — Kraken at `price_scale=1` against Binance at `2`
+  makes one venue win every bid and lose every ask, forever, while mismatched
+  quantity scales silently corrupt the VWAP weights with no visible symptom.
+  `VenueQuote` therefore carries its `InstrumentSpec`, `update()` returns
+  `false` and refuses a quote that disagrees, and `best_execution` drops any
+  book whose spec does not match.
+- **Rounding costs the trader, never flatters them.** Integer division
+  truncates toward zero, which understates what an ask costs and overstates
+  what a bid pays — enough to invert the venue ranking outright. Fees round
+  away from zero and VWAP rounds against the taker, so a venue is never
+  reported cheaper than it is.
+- **Ties break deterministically**, on venue name rather than arrival order.
+  Two processes reading the same market must route identically, and rounding
+  onto integer prices manufactures exact ties often enough for it to matter.
 
 ## Footprint, threading, and running many instruments
 

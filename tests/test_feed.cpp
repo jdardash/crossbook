@@ -465,3 +465,29 @@ TEST_CASE("a spot feed recovers from a resync instead of looping", "[feed][spot]
     CHECK(feed.synced());
     CHECK(feed.divergences().count(DivergenceKind::kSequenceGap) == 1);
 }
+
+TEST_CASE("a level the book refuses is counted and logged, not evaporated",
+          "[feed][reject]") {
+    // BasicL2Book::apply rejects a negative quantity because the checksum takes
+    // the magnitude and therefore cannot catch a sign flip: -5 and +5 produce
+    // byte-identical CRC32. That rejection used to return into nothing - the
+    // level vanished, no counter moved, and the book silently lacked something
+    // the venue had told it about. The feed is the only layer that can say so.
+    auto feed = make_binance();
+    const DecodedMessage& snap = feed.decoder().decode_snapshot(
+        R"({"lastUpdateId":100,"bids":[["45283.50","1.00000000"]],"asks":[]})");
+    REQUIRE(feed.apply_snapshot(snap) == FeedStatus::kApplied);
+    REQUIRE(feed.stats().levels_rejected == 0);
+    const std::uint64_t before = feed.book().state_hash();
+
+    // A negative quantity on the wire. parse_fixed accepts the sign, so this
+    // reaches the book exactly as a decoder sign bug would.
+    const auto status = feed.handle(
+        R"({"e":"depthUpdate","E":1,"s":"BTCUSDT","U":101,"u":105,)"
+        R"("b":[["45283.00","-5.00000000"]],"a":[]})");
+    INFO("status=" << to_string(status));
+
+    CHECK(feed.stats().levels_rejected == 1);
+    CHECK(feed.book().state_hash() == before);  // Refused, not stored.
+    CHECK(feed.divergences().count(DivergenceKind::kMalformedMessage) >= 1);
+}

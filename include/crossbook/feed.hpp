@@ -87,6 +87,13 @@ struct FeedStats {
     /// steady trickle is normal and expected; zero on a depth-limited feed
     /// means the depth was never configured, which is worth being able to see.
     std::uint64_t levels_trimmed{0};
+    /// Levels the book refused: a negative price or quantity, which no venue
+    /// should ever send. Non-zero means the decoder produced something the
+    /// book considers impossible, so it is a decoder bug or a venue format
+    /// change, never routine. Counted and logged rather than dropped, because
+    /// a book quietly missing levels it was told about is the failure this
+    /// library exists to make visible.
+    std::uint64_t levels_rejected{0};
 };
 
 /// Drives one instrument on one venue.
@@ -233,7 +240,9 @@ private:
         // not know you invented.
         book_.clear();
         for (const LevelUpdate& lvl : msg.levels) {
-            book_.apply(lvl.side, lvl.price, lvl.qty);
+            if (!book_.apply(lvl.side, lvl.price, lvl.qty)) {
+                record_rejected_level(msg, lvl);
+            }
         }
         stats_.levels_trimmed += book_.trim(depth_);
         book_.set_last_update(msg.ts);
@@ -279,7 +288,9 @@ private:
         }
 
         for (const LevelUpdate& lvl : msg.levels) {
-            book_.apply(lvl.side, lvl.price, lvl.qty);
+            if (!book_.apply(lvl.side, lvl.price, lvl.qty)) {
+                record_rejected_level(msg, lvl);
+            }
         }
         // Trim BEFORE verifying. The checksum covers the top ten levels, so a
         // stale level that has re-entered the top ten is exactly what the
@@ -296,6 +307,24 @@ private:
     }
 
     /// Recompute the exchange's checksum over local state and compare.
+    /// The book refused a level. Record it rather than letting it evaporate.
+    ///
+    /// `BasicL2Book::apply` returns false for a negative price or quantity,
+    /// which no venue sends and which the checksum cannot catch: it takes the
+    /// magnitude, so a sign-flipped quantity produces byte-identical CRC32 to
+    /// the correct one. The book therefore rejects rather than storing, and
+    /// this is the only place that can say so. Sync is deliberately left alone
+    /// - the book is not wrong, it is missing a level it was right to refuse -
+    /// but a non-zero count here means the decoder and the book disagree about
+    /// what is representable, and that is never routine.
+    void record_rejected_level(const DecodedMessage& msg, const LevelUpdate& lvl) {
+        ++stats_.levels_rejected;
+        log_.record(Divergence{DivergenceKind::kMalformedMessage, venue_,
+                               std::string(book_.spec().symbol), msg.ts, msg.ids.final_id,
+                               static_cast<std::uint64_t>(lvl.price.ticks),
+                               static_cast<std::uint64_t>(lvl.qty.units), "book refused level"});
+    }
+
     [[nodiscard]] bool verify_checksum(const DecodedMessage& msg) {
         ++stats_.checksums_verified;
         const std::uint32_t local = kraken_checksum(book_);
