@@ -38,6 +38,15 @@
       }
     },
     {
+      "name": "release-native",
+      "inherits": "release",
+      "displayName": "Release, tuned for this machine",
+      "description": "Adds -march=native (MSVC: /arch:AVX2) and LTO. Numbers from this preset describe one machine and are not comparable across hosts; the README's figures come from the plain release preset.",
+      "cacheVariables": {
+        "CROSSBOOK_NATIVE": "ON"
+      }
+    },
+    {
       "name": "bench",
       "inherits": "release",
       "displayName": "Release + benchmarks",

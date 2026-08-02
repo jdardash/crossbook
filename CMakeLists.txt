@@ -38,6 +38,30 @@ option(CROSSBOOK_BUILD_FUZZ "Build the fuzz targets (clang only)" OFF)
 option(CROSSBOOK_BUILD_EXAMPLES "Build the compilable examples" ${CROSSBOOK_IS_TOP_LEVEL})
 option(CROSSBOOK_WERROR "Treat warnings as errors" ${CROSSBOOK_IS_TOP_LEVEL})
 
+# Off by default and never inherited: a binary tuned for the build machine's
+# ISA is a binary that dies with an illegal instruction on the next machine,
+# and the README's numbers must come from the configuration a consumer gets
+# by default. This exists for measuring the ceiling on one's own hardware.
+option(CROSSBOOK_NATIVE
+       "Tune codegen for this machine (-march=native, /arch:AVX2 on MSVC) and enable LTO" OFF)
+
+if(CROSSBOOK_NATIVE)
+    if(MSVC)
+        # MSVC has no -march=native; AVX2 is the widest ISA this project is
+        # willing to assume behind an explicit opt-in.
+        add_compile_options(/arch:AVX2)
+    else()
+        add_compile_options(-march=native)
+    endif()
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT crossbook_ipo_supported OUTPUT crossbook_ipo_message)
+    if(crossbook_ipo_supported)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+    else()
+        message(STATUS "crossbook: LTO unavailable, continuing without it: ${crossbook_ipo_message}")
+    endif()
+endif()
+
 # Installing is a decision for whoever owns the prefix. A parent project that
 # vendors crossbook and then runs `cmake --install .` must not have crossbook's
 # headers appear in its prefix as a side effect it never asked for, so the
