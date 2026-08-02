@@ -52,6 +52,56 @@ TEST_CASE("string_body strips quotes and rejects escapes", "[json]") {
     CHECK(json::string_body(json::find(doc, "escaped")).empty());
 }
 
+TEST_CASE("read_string separates absent from escaped", "[json]") {
+    // string_body returns an empty view for both "not a string" and "escaped",
+    // and a caller cannot tell those apart from the view alone. That ambiguity
+    // is what made the escaped-symbol defect invisible: {"symbol":"BTC\/USD"}
+    // is legal JSON that yielded an empty symbol, which reads as "no symbol"
+    // rather than "a symbol this reader declined to decode".
+    constexpr std::string_view doc = R"({"plain":"BTC/USD","escaped":"BTC\/USD","num":7})";
+
+    std::string_view body;
+    CHECK(json::read_string(json::find(doc, "plain"), body) == json::StringRead::kPlain);
+    CHECK(body == "BTC/USD");
+
+    CHECK(json::read_string(json::find(doc, "escaped"), body) == json::StringRead::kEscaped);
+    CHECK(body == R"(BTC\/USD)");  // Raw, still escaped, and explicitly labelled so.
+
+    CHECK(json::read_string(json::find(doc, "num"), body) == json::StringRead::kNotAString);
+    CHECK(body.empty());
+
+    CHECK(json::read_string(json::find(doc, "missing"), body) == json::StringRead::kNotAString);
+}
+
+TEST_CASE("string_equals decodes escapes so a legal frame is not a false mismatch", "[json]") {
+    // \/ is a valid JSON escape for '/' and a venue may emit it at any time.
+    // Comparing the raw body against "BTC/USD" fails; comparing the decoded
+    // value succeeds. Once symbol comparison is live, the difference between
+    // those two is a spurious resync on a frame that was never wrong.
+    constexpr std::string_view doc =
+        R"({"a":"BTC\/USD","b":"BTC/USD","c":"line\nbreak","d":"quote\"inside","e":"back\\slash"})";
+    CHECK(json::string_equals(json::find(doc, "a"), "BTC/USD"));
+    CHECK(json::string_equals(json::find(doc, "b"), "BTC/USD"));
+    CHECK(json::string_equals(json::find(doc, "c"), "line\nbreak"));
+    CHECK(json::string_equals(json::find(doc, "d"), "quote\"inside"));
+    CHECK(json::string_equals(json::find(doc, "e"), "back\\slash"));
+
+    // Still a comparison, so it must also say no when the answer is no.
+    CHECK_FALSE(json::string_equals(json::find(doc, "a"), "ETH/USD"));
+    CHECK_FALSE(json::string_equals(json::find(doc, "a"), "BTC/USD "));
+    CHECK_FALSE(json::string_equals(json::find(doc, "a"), "BTC/US"));
+
+    // \u is not decoded. Fail closed rather than claim a match this reader
+    // cannot actually verify. (The escape below spells "ABC" in real JSON.)
+    constexpr std::string_view uni = "{\"s\":\"\\u00" "41BC\"}";
+    CHECK_FALSE(json::string_equals(json::find(uni, "s"), "ABC"));
+    std::string_view uni_body;
+    CHECK(json::read_string(json::find(uni, "s"), uni_body) == json::StringRead::kEscaped);
+
+    // A non-string never equals anything.
+    CHECK_FALSE(json::string_equals(json::find(R"({"n":42})", "n"), "42"));
+}
+
 TEST_CASE("for_each walks array elements", "[json]") {
     constexpr std::string_view doc = R"({"xs":[1,22,333]})";
     std::string joined;
@@ -176,4 +226,98 @@ TEST_CASE("well_formed distinguishes truncation from an absent key", "[json]") {
     // invalid find(); only well_formed() tells them apart.
     CHECK_FALSE(json::find(R"({"a":1})", "b").ok());
     CHECK(json::well_formed(R"({"a":1})"));
+}
+
+TEST_CASE("well_formed validates scalars, not only structure", "[json]") {
+    // Every one of these was structurally navigable and therefore validated,
+    // which broke the guarantee well_formed's own docblock makes: a caller that
+    // had run it could still be handed a value whose type was a lie.
+    for (std::string_view bad : {
+             R"({"a":@@@})",
+             R"({"checksum":12ab})",
+             R"({"a":truthy})",
+             R"({"a":--1})",
+             R"({"a":0x10})",
+             R"({"a":.5})",
+             R"({"a":+5})",
+             R"({"a":tru})",
+             R"({"a":nulll})",
+             R"({"a":falsey})",
+             R"({"a":01})",
+             R"({"a":1.})",
+             R"({"a":1e})",
+             R"({"a":1e+})",
+             R"({"a":-})",
+             R"({"a":Infinity})",
+             R"({"a":NaN})",
+             R"([1,@,3])",
+         }) {
+        INFO("input=" << bad);
+        CHECK_FALSE(json::well_formed(bad));
+        // And the key must not be reachable either, or the rejection is
+        // cosmetic: callers reach values through find(), not well_formed().
+        CHECK_FALSE(json::find(bad, "a").ok());
+        CHECK_FALSE(json::find(bad, "checksum").ok());
+    }
+}
+
+TEST_CASE("well_formed still accepts every number a venue actually sends", "[json]") {
+    // The strictness above is only defensible if it does not reject real wire
+    // data. Kraken prices, Binance quantities, exponent notation, negatives.
+    for (std::string_view good : {
+             R"({"a":0})",
+             R"({"a":-0})",
+             R"({"a":45285.2})",
+             R"({"a":0.00100000})",
+             R"({"a":-3.5})",
+             R"({"a":1e5})",
+             R"({"a":1E-10})",
+             R"({"a":1.5e+3})",
+             R"({"a":2418130093})",
+             R"({"a":true,"b":false,"c":null})",
+         }) {
+        INFO("input=" << good);
+        CHECK(json::well_formed(good));
+        CHECK(json::find(good, "a").ok());
+    }
+}
+
+TEST_CASE("a corrupted checksum is rejected, not silently downgraded", "[json]") {
+    // The mechanism this whole fix exists for. A Kraken frame whose checksum
+    // field is corrupted used to pass structural validation, classify as
+    // kNumber, fail parse_u64, and leave has_checksum false — so the frame was
+    // applied to the book with verification quietly switched off. The corrupted
+    // frame turned off the one thing that would have caught it.
+    constexpr std::string_view corrupt = R"({"channel":"book","checksum":12ab})";
+    CHECK_FALSE(json::well_formed(corrupt));
+    CHECK_FALSE(json::find(corrupt, "checksum").ok());
+
+    // Not a number by first byte either, now that the run must spell one.
+    constexpr std::string_view plus = R"({"price":+45283.5})";
+    CHECK_FALSE(json::well_formed(plus));
+    CHECK_FALSE(json::find(plus, "price").ok());
+    // parse_fixed accepts a leading sign, so classify() answering kNumber here
+    // was enough on its own to turn "+45283.5" into an ordinary price.
+    CHECK(json::classify("+45283.5", 0) == JsonType::kInvalid);
+    CHECK(json::classify("-45283.5", 0) == JsonType::kNumber);
+}
+
+TEST_CASE("duplicate keys resolve first-wins, deliberately", "[json]") {
+    // RFC 8259 leaves this undefined and the two answers are not equally safe.
+    // Pinned so a rewrite of the scan loop cannot flip it silently.
+    constexpr std::string_view doc = R"({"a":1,"b":2,"a":999})";
+    CHECK(json::find(doc, "a").raw == "1");
+
+    // The reason it matters: last-wins would let one frame be routed as a depth
+    // update by a reader that takes the first "e" and as a trade by a reader
+    // that takes the last. First-wins makes every reader agree.
+    constexpr std::string_view desync =
+        R"({"e":"depthUpdate","U":1,"u":2,"b":[],"a":[],"e":"trade"})";
+    CHECK(json::string_body(json::find(desync, "e")) == "depthUpdate");
+
+    // Also true when the shadowing value is a different shape entirely, which
+    // is the version that would change a value's TYPE under a reader's feet.
+    constexpr std::string_view retyped = R"({"checksum":2418130093,"checksum":"nope"})";
+    CHECK(json::find(retyped, "checksum").type == JsonType::kNumber);
+    CHECK(json::find(retyped, "checksum").raw == "2418130093");
 }

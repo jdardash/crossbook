@@ -73,18 +73,34 @@ void exercise_scanner(std::string_view input) {
 
 /// A decoded message must be internally coherent and safe to apply.
 void check_message(const DecodedMessage& msg, std::string_view input) {
+    // Structural validation and navigation must agree, and this has to be
+    // asserted BEFORE the !ok() early return.
+    //
+    // Below the return it was dead code, and dead in the way that is hardest to
+    // notice: both decoders open with a well_formed() gate, so reaching the
+    // check at all already implied well_formed(input) == true, and a guard
+    // whose premise is unreachable checks nothing while looking like it checks
+    // the most important thing in the file. This is the regression guard for
+    // the truncated-frame bug — a `"b":[[` array that never closed decoding as
+    // ok() with kind == kUpdate and no bids, then being applied as an empty
+    // update — and it had been silently retired.
+    //
+    // Hoisted, it constrains the path that can actually go wrong: a frame that
+    // is not well-formed must not produce a successful decode from ANY decoder,
+    // and must not leave levels behind whatever status it reports.
+    if (!json::well_formed(input)) {
+        CB_CHECK(!msg.ok());
+        CB_CHECK(msg.levels.empty());
+    }
+
     if (!msg.ok()) {
         // A failed decode must not leave levels behind for a caller to apply.
         CB_CHECK(msg.levels.empty());
         return;
     }
 
-    // Structural validation and navigation must agree. If the frame is not
-    // well-formed, no decoder may claim a usable book message.
-    if (!json::well_formed(input)) {
-        CB_CHECK(msg.kind == MessageKind::kIgnored);
-    }
-
+    // A successful decode of a well-formed frame may be anything the venue
+    // sends, but it may never claim more levels than the cap.
     CB_CHECK(msg.levels.size() <= kMaxLevelsPerMessage);
     if (!msg.symbol.empty()) {
         CB_CHECK(msg.symbol.data() >= input.data());
