@@ -303,10 +303,15 @@ void BM_KrakenDecode(benchmark::State& state) {
     for (auto _ : state) {
         const DecodedMessage& msg = decoder.decode(frame);
         benchmark::DoNotOptimize(msg.levels.data());
-        benchmark::DoNotOptimize(msg.checksum);
+        // Copied to a mutable local: the const-ref DoNotOptimize overload is
+        // deprecated for small trivially-copyable types, and under -Werror on
+        // GCC that deprecation is fatal.
+        std::uint32_t checksum = msg.checksum;
+        benchmark::DoNotOptimize(checksum);
     }
     state.SetItemsProcessed(state.iterations());
-    state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations() * frame.size()));
+    state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations()) *
+                            static_cast<std::int64_t>(frame.size()));
     state.counters["levels"] = static_cast<double>(levels_per_side * 2);
     state.counters["frame_bytes"] = static_cast<double>(frame.size());
 }
@@ -334,7 +339,7 @@ void BM_FeedHandle(benchmark::State& state) {
 
     std::size_t i = 0;
     for (auto _ : state) {
-        const FeedStatus status = feed.handle(cycle.frames[i]);
+        FeedStatus status = feed.handle(cycle.frames[i]);
         benchmark::DoNotOptimize(status);
         if (++i == cycle.frames.size()) {
             i = 0;
@@ -351,8 +356,9 @@ void BM_FeedHandle(benchmark::State& state) {
     }
 
     state.SetItemsProcessed(state.iterations());
-    state.SetBytesProcessed(static_cast<std::int64_t>(
-        state.iterations() * cycle.bytes / cycle.frames.size()));
+    state.SetBytesProcessed(static_cast<std::int64_t>(state.iterations()) *
+                            static_cast<std::int64_t>(cycle.bytes) /
+                            static_cast<std::int64_t>(cycle.frames.size()));
     state.counters["update_levels"] = static_cast<double>(update_levels);
     state.counters["frames_per_snapshot"] = static_cast<double>(cycle.frames.size());
     state.counters["verified"] = static_cast<double>(feed.stats().checksums_verified);
@@ -482,8 +488,8 @@ void BM_BestBidAsk(benchmark::State& state) {
     Level bid{};
     Level ask{};
     for (auto _ : state) {
-        const bool have_bid = book.best(Side::kBid, bid);
-        const bool have_ask = book.best(Side::kAsk, ask);
+        bool have_bid = book.best(Side::kBid, bid);
+        bool have_ask = book.best(Side::kAsk, ask);
         benchmark::DoNotOptimize(bid);
         benchmark::DoNotOptimize(ask);
         benchmark::DoNotOptimize(have_bid);
