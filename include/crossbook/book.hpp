@@ -479,7 +479,14 @@ public:
             }
         };
         for (const Side s : {Side::kBid, Side::kAsk}) {
+            // Side tag, then level count, then a domain separator. Without the
+            // count and the separator the tag is just another mantissa in the
+            // stream, and a book with one bid at (1, 1) hashed identically to
+            // a book with one ask at (1, 1) — a collision in the value the
+            // determinism gate compares.
             mix(static_cast<std::uint64_t>(s));
+            mix(static_cast<std::uint64_t>(side(s).size()));
+            mix(0x5EA5'0FF5'C0DE'D00DULL);
             side(s).for_each([&](const Level& lvl) {
                 mix(static_cast<std::uint64_t>(lvl.price.ticks));
                 mix(static_cast<std::uint64_t>(lvl.qty.units));

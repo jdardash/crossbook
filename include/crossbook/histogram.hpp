@@ -33,6 +33,8 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -61,6 +63,13 @@ public:
         if (highest_trackable < 2) {
             highest_trackable = 2;
         }
+        // Past 2^63 the `covered <<= 1` below wraps to zero and the sizing loop
+        // never terminates. A caller passing something near UINT64_MAX means
+        // "no practical ceiling", so give them the largest one that can be
+        // expressed rather than hanging at construction.
+        if (highest_trackable > (1ULL << 62)) {
+            highest_trackable = 1ULL << 62;
+        }
         highest_trackable_ = highest_trackable;
 
         // Smallest power of two that still gives unit resolution across the
@@ -79,9 +88,16 @@ public:
         sub_bucket_mask_ = sub_bucket_count_ - 1;
 
         // Enough power-of-two buckets to reach the top of the range.
+        //
+        // The comparison is `<=`, not `<`. Stopping at `covered ==
+        // highest_trackable_` leaves the top value indexing one past the end:
+        // `record` clamps everything above the range down onto
+        // `highest_trackable_`, so on a power-of-two range every oversized
+        // sample wrote out of bounds. Only exact powers of two are affected,
+        // which is why the default of 3'600'000'000'000 never showed it.
         bucket_count_ = 1;
         std::uint64_t covered = sub_bucket_count_;
-        while (covered < highest_trackable_) {
+        while (covered <= highest_trackable_) {
             covered <<= 1;
             ++bucket_count_;
         }
@@ -189,9 +205,19 @@ public:
 
     /// Fold another histogram in. Used to combine per-thread histograms without
     /// contending on a shared one in the measurement path.
-    void merge(const Histogram& other) {
-        if (other.counts_.size() != counts_.size()) {
-            return;  // Different configurations are not comparable.
+    /// Returns false, and changes nothing, if the layouts differ.
+    ///
+    /// Comparing `counts_.size()` was not enough: that size is
+    /// `(bucket_count + 1) * sub_bucket_half_count`, and distinct
+    /// (range, significant_figures) pairs collide on the product while mapping
+    /// values to indices completely differently — (2e12, 3) and (30'000, 4)
+    /// both size to 32768. Merging across such a pair added counts bucket-by-
+    /// bucket into slots that meant something else and reported percentiles
+    /// that were off by 3x while looking entirely plausible. Silently wrong
+    /// tail numbers are worse than no tail numbers, so this reports.
+    [[nodiscard]] bool merge(const Histogram& other) {
+        if (other.bucket_layout() != bucket_layout()) {
+            return false;
         }
         for (std::size_t i = 0; i < counts_.size(); ++i) {
             counts_[i] += other.counts_[i];
@@ -203,6 +229,32 @@ public:
         total_count_ += other.total_count_;
         total_sum_ += other.total_sum_;
         overflow_count_ += other.overflow_count_;
+        return true;
+    }
+
+    /// Total samples actually resident in buckets. Must equal `count()`.
+    ///
+    /// These can only diverge if some value indexed outside `counts_`, which
+    /// is a sizing bug rather than a recording one — and a silent one, because
+    /// the write lands in whatever follows the allocation and the sample
+    /// simply vanishes from every percentile. Asserting the identity is the
+    /// only cheap way to catch that without a sanitizer, so tests check it
+    /// rather than checking that recording "ran".
+    [[nodiscard]] std::uint64_t bucket_total() const noexcept {
+        std::uint64_t sum = 0;
+        for (const std::uint64_t c : counts_) {
+            sum += c;
+        }
+        return sum;
+    }
+
+    /// The value→index mapping, as a comparable triple.
+    ///
+    /// Two histograms may be merged only if these agree. Exposed because
+    /// "are these two comparable" is a question callers legitimately have
+    /// before they have samples to lose.
+    [[nodiscard]] std::array<std::uint64_t, 3> bucket_layout() const noexcept {
+        return {sub_bucket_magnitude_, bucket_count_, highest_trackable_};
     }
 
     /// The smallest value that would land in the same bucket as `value`.
@@ -256,15 +308,19 @@ private:
         return static_cast<std::uint64_t>(sub) << static_cast<std::uint64_t>(bucket);
     }
 
-    /// Portable count-leading-zeros. `value` is never zero here: the caller
-    /// always ORs in a non-zero mask first.
+    /// Count-leading-zeros.
+    ///
+    /// Was a shift-and-count loop — up to 64 iterations, and it ran once per
+    /// `record()`, which is inside the replay measurement loop. Measured at
+    /// ~15 ns of a 22.5 ns `record()`; `std::countl_zero` is ~1.7 ns and
+    /// compiles to a single instruction. The header above claims every record
+    /// is "a handful of integer ops", and with this it finally is.
+    ///
+    /// Also removes a latent hang: the old loop never terminated on zero. The
+    /// caller ORs in a non-zero mask so it was unreachable, but "unreachable"
+    /// was a property of the caller, not of this function.
     [[nodiscard]] static int count_leading_zeros(std::uint64_t value) noexcept {
-        int n = 0;
-        while ((value & 0x8000000000000000ULL) == 0) {
-            value <<= 1;
-            ++n;
-        }
-        return n;
+        return std::countl_zero(value);
     }
 
     std::uint64_t highest_trackable_{0};

@@ -119,7 +119,13 @@ TEST_CASE("a fast handler keeps pace", "[replay][timing]") {
     const auto events = make_capture(20, 5'000'000);
     const ReplayResult r = replay_open_loop(events, [](const ReplayEvent&) {});
     INFO("behind_schedule=" << r.behind_schedule << " max_lateness=" << r.max_lateness);
-    CHECK(r.behind_schedule <= 2);
+    // Was `<= 2`, which tolerated the schedule-origin artifact that made event
+    // 0 late on literally every run. With the lead-in, an idle handler at 5ms
+    // spacing is never late, so the tolerance can be zero — and kept_pace()
+    // becomes a gate that can actually fail.
+    CHECK(r.behind_schedule == 0);
+    CHECK(r.max_lateness == 0);
+    CHECK(r.kept_pace());
 }
 
 // ---------------------------------------------------------------------------

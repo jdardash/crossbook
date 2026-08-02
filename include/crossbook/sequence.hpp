@@ -18,10 +18,17 @@
 // over one state machine keeps the difference explicit instead of letting it
 // hide in per-venue copy-paste.
 //
-// Snapshot reconciliation for Binance, per its documented procedure:
-//   - discard any event whose u is below the snapshot's lastUpdateId
-//   - the first event actually applied must straddle it: U <= lastUpdateId <= u
-//   - from then on, continuity applies
+// Snapshot reconciliation for Binance, per its documented procedure. The two
+// venues anchor it one apart, and the difference is load-bearing:
+//
+//   spot     discard u <= lastUpdateId; first applied event straddles
+//            lastUpdateId + 1, i.e. U <= lastUpdateId+1 <= u
+//   futures  discard u <  lastUpdateId; first applied event straddles
+//            lastUpdateId itself, i.e. U <= lastUpdateId <= u
+//
+// Then continuity applies. Getting the spot anchor wrong does not merely lose
+// one event: the first event after any resync starts at lastUpdateId + 1, so a
+// futures-shaped anchor rejects it, demands another snapshot, and loops.
 
 #pragma once
 
@@ -144,14 +151,27 @@ public:
 
         // --- Binance spot and futures ---
 
+        // Spot and futures anchor reconciliation one apart, and this is the
+        // single constant that differs. Spot's documented rule discards any
+        // event with u <= lastUpdateId and requires the first applied event to
+        // satisfy U <= lastUpdateId+1 <= u; futures anchors on lastUpdateId
+        // itself. Running the futures rule on spot rejects the event beginning
+        // at exactly lastUpdateId+1 — which is the *modal* first event, and
+        // the guaranteed shape after any resync, because the buffer is dropped
+        // and the stream resumes one past the snapshot. The result was a
+        // resync loop that never converged on a stream with no gap in it,
+        // reporting a gap rate that measured this bug rather than the venue.
+        const SequenceId anchor =
+            (policy_ == SequencePolicy::kBinanceSpot) ? snapshot_id_ + 1 : snapshot_id_;
+
         if (!straddled_) {
             // Drain the buffer captured while the snapshot was in flight.
-            if (ids.final_id < snapshot_id_) {
+            if (ids.final_id < anchor) {
                 ++stats_.discarded_stale;
                 return SequenceAction::kDiscardStale;
             }
-            // The first applied event must straddle the snapshot id.
-            if (!(ids.first_id <= snapshot_id_ && ids.final_id >= snapshot_id_)) {
+            // The first applied event must straddle the anchor.
+            if (!(ids.first_id <= anchor && ids.final_id >= anchor)) {
                 // The stream has already moved past our snapshot: it is stale.
                 ++stats_.gaps_detected;
                 have_snapshot_ = false;

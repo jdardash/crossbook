@@ -310,7 +310,13 @@ constexpr bool checked_add(std::int64_t a, std::int64_t b, std::int64_t& out) no
 /// tests/test_fixed.cpp "the checksum-token identity requires canonical wire
 /// spelling".
 [[nodiscard]] inline std::string checksum_token(std::int64_t mantissa) {
-    return std::to_string(mantissa < 0 ? -mantissa : mantissa);
+    // Negating through the signed type is UB at INT64_MIN, and `-mantissa`
+    // there evaluates to itself — so the token came back carrying a '-' into
+    // what is documented to be digits only. `format_fixed` and
+    // `checksum.hpp::write_digits` both already take the magnitude through
+    // uint64; this one function was missed.
+    const auto bits = static_cast<std::uint64_t>(mantissa);
+    return std::to_string(mantissa < 0 ? (0ULL - bits) : bits);
 }
 
 }  // namespace crossbook

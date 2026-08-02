@@ -62,10 +62,26 @@ TEST_CASE("spot requires the first applied event to straddle the snapshot", "[se
         t.on_snapshot(100);
         CHECK(t.on_update(spot(100, 105)) == SequenceAction::kApply);
     }
-    SECTION("u exactly at the snapshot id straddles") {
+    SECTION("U exactly one past the snapshot id straddles") {
+        // The modal case, and the one a futures-shaped rule rejects. After any
+        // resync the buffer is dropped and the very next event begins at
+        // lastUpdateId + 1 — so if this resyncs, it resyncs forever on a
+        // stream that never gapped.
         SequenceTracker t(SequencePolicy::kBinanceSpot);
         t.on_snapshot(100);
-        CHECK(t.on_update(spot(95, 100)) == SequenceAction::kApply);
+        CHECK(t.on_update(spot(101, 105)) == SequenceAction::kApply);
+        CHECK(t.straddled());
+        CHECK(t.stats().gaps_detected == 0);
+    }
+    SECTION("u exactly at the snapshot id is fully contained by it") {
+        // Spot discards where u <= lastUpdateId: every change this event
+        // carries is already in the snapshot. Futures, anchoring one lower,
+        // treats the same event as the straddle. See the divergence test below.
+        SequenceTracker t(SequencePolicy::kBinanceSpot);
+        t.on_snapshot(100);
+        CHECK(t.on_update(spot(95, 100)) == SequenceAction::kDiscardStale);
+        CHECK(t.stats().gaps_detected == 0);
+        CHECK(t.synced());
     }
     SECTION("a snapshot older than the stream forces a resync") {
         // The book we fetched is already behind what the socket is delivering,
@@ -144,6 +160,61 @@ TEST_CASE("the spot rule and the futures rule genuinely differ", "[sequence]") {
     futures_tracker.on_snapshot(100);
     REQUIRE(futures_tracker.on_update(futures(98, 105, 97)) == SequenceAction::kApply);
     CHECK(futures_tracker.on_update(event) == SequenceAction::kApply);
+}
+
+TEST_CASE("spot and futures anchor snapshot reconciliation differently", "[sequence]") {
+    // The two venues do not merely differ in ongoing continuity — they differ
+    // in where reconciliation begins. Spot anchors at lastUpdateId + 1 and
+    // discards anything at or below the snapshot; futures anchors on
+    // lastUpdateId itself. One constant, and getting it wrong on spot means
+    // every resync demands another resync.
+    const UpdateIds contained = UpdateIds{95, 100, 94};   // u == lastUpdateId
+    const UpdateIds resumption = UpdateIds{101, 105, 100};  // U == lastUpdateId + 1
+
+    SECTION("an event ending exactly at the snapshot id") {
+        SequenceTracker spot_tracker(SequencePolicy::kBinanceSpot);
+        spot_tracker.on_snapshot(100);
+        CHECK(spot_tracker.on_update(contained) == SequenceAction::kDiscardStale);
+
+        SequenceTracker futures_tracker(SequencePolicy::kBinanceFutures);
+        futures_tracker.on_snapshot(100);
+        CHECK(futures_tracker.on_update(contained) == SequenceAction::kApply);
+    }
+
+    SECTION("an event resuming exactly one past the snapshot id") {
+        // Spot applies it: 101 is exactly spot's anchor.
+        SequenceTracker spot_tracker(SequencePolicy::kBinanceSpot);
+        spot_tracker.on_snapshot(100);
+        CHECK(spot_tracker.on_update(resumption) == SequenceAction::kApply);
+
+        // Futures does NOT, and that is the documented rule rather than an
+        // oversight: its procedure requires U <= lastUpdateId <= u, so an
+        // event beginning past the snapshot means the snapshot was fetched
+        // without a straddling event buffered and must be refetched. The
+        // asymmetry is the whole reason the anchor is policy-dependent — the
+        // bug was applying THIS behaviour to spot, where the same event is the
+        // normal resumption.
+        SequenceTracker futures_tracker(SequencePolicy::kBinanceFutures);
+        futures_tracker.on_snapshot(100);
+        CHECK(futures_tracker.on_update(resumption) == SequenceAction::kResyncRequired);
+    }
+
+    SECTION("a spot resync recovers instead of looping") {
+        // The regression this test exists for: drop the buffer, refetch, and
+        // the next event necessarily starts at lastUpdateId + 1. Under a
+        // futures-shaped anchor that reads as a gap, and the recovery never
+        // converges.
+        SequenceTracker t(SequencePolicy::kBinanceSpot);
+        t.on_snapshot(100);
+        REQUIRE(t.on_update(spot(105, 110)) == SequenceAction::kResyncRequired);
+        REQUIRE_FALSE(t.synced());
+
+        t.on_snapshot(200);
+        CHECK(t.on_update(spot(201, 210)) == SequenceAction::kApply);
+        CHECK(t.on_update(spot(211, 215)) == SequenceAction::kApply);
+        CHECK(t.synced());
+        CHECK(t.stats().gaps_detected == 1);
+    }
 }
 
 // ---------------------------------------------------------------------------

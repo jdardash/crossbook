@@ -177,6 +177,20 @@ public:
 
 private:
     [[nodiscard]] FeedStatus apply_snapshot_message(const DecodedMessage& msg) {
+        // A failed decode is not an empty book. Without this, a truncated REST
+        // response cleared the book, applied zero levels, and set synced_ =
+        // true — an empty book that reports itself as current, which is the
+        // exact failure the rest of this file exists to prevent. The caller
+        // gets kRejected and must fetch the snapshot again.
+        if (!msg.ok()) {
+            ++stats_.rejected;
+            log_.record(Divergence{DivergenceKind::kMalformedMessage, venue_,
+                                   std::string(book_.spec().symbol), msg.ts, msg.ids.final_id, 0, 0,
+                                   std::string(msg.bad_token.empty() ? to_string(msg.error)
+                                                                     : msg.bad_token)});
+            return FeedStatus::kRejected;
+        }
+
         // A snapshot is a replacement, never a merge. Applying one onto stale
         // state leaves phantom levels that no later update will ever clear,
         // because the venue has no reason to send a delete for a level it does

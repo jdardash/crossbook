@@ -168,7 +168,18 @@ template <typename Handler>
     const double speed = (options.speed > 0.0) ? options.speed : 1.0;
     Histogram histogram;
 
-    const std::uint64_t wall_start = detail::now_ns();
+    // The schedule starts slightly in the future.
+    //
+    // Without the lead-in, event 0's deadline is `wall_start` itself, and the
+    // clock read a few hundred nanoseconds later is already past it — so
+    // event 0 counted as late on every run and `kept_pace()` was a constant
+    // false. That is the gate documented as "the precondition for reading
+    // these percentiles as steady-state latency", so it conveyed nothing, and
+    // `max_lateness` carried a sub-microsecond artifact that had nothing to do
+    // with the handler. One millisecond is far below any real inter-arrival
+    // gap and far above the cost of entering the loop.
+    static constexpr std::uint64_t kScheduleLeadNs = 1'000'000;
+    const std::uint64_t wall_start = detail::now_ns() + kScheduleLeadNs;
     const Timestamp epoch = events.front().ts_recv;
 
     for (std::size_t i = 0; i < events.size(); ++i) {

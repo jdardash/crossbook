@@ -132,7 +132,7 @@ TEST_CASE("merge combines two histograms", "[histogram]") {
     for (std::uint64_t v = 1001; v <= 2000; ++v) {
         b.record(v);
     }
-    a.merge(b);
+    CHECK(a.merge(b));
     CHECK(a.count() == 2000);
     CHECK(a.min() == 1);
     CHECK(a.max() >= 2000);
@@ -232,4 +232,79 @@ TEST_CASE("summarise reports the tail, not just the mean", "[histogram]") {
     CHECK(r.p999 <= r.p9999);
     CHECK(r.p9999 <= r.max);
     CHECK(r.mean > 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// Sizing invariants
+//
+// The bucket-sizing loop stopped at `covered == highest_trackable`, which is
+// one doubling short whenever the range is exactly a power of two. `record`
+// clamps everything above the range down onto it, so on such a histogram
+// EVERY oversized sample wrote one past the end of `counts_`. Caught by ASan,
+// not by any test here, because every value in this file happened to be a
+// non-power-of-two.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("a power-of-two range does not write past the counts array",
+          "[histogram][sizing]") {
+    // Each of these sizes to exactly (bucket_count + 1) * sub_bucket_half_count
+    // and lands its top value on the last index. Off by one and this is a heap
+    // overflow, so the assertion that matters is that it runs at all.
+    for (const std::uint64_t highest : {std::uint64_t{2048}, std::uint64_t{4096},
+                                        std::uint64_t{65536}, std::uint64_t{1} << 20,
+                                        std::uint64_t{1} << 32}) {
+        for (int sig = 1; sig <= 5; ++sig) {
+            Histogram h(highest, sig);
+            h.record(highest);      // The clamp target: index_for's largest result.
+            h.record(highest * 2);  // Clamped down onto it.
+            h.record(1);
+            CHECK(h.count() == 3);
+            CHECK(h.max() == highest);
+            CHECK(h.overflow_count() == 1);
+            // The assertion that actually fails when the sizing is wrong. A
+            // release-build vector write past the end is silent, so "it ran"
+            // proves nothing; a sample that indexed out of bounds is missing
+            // from the buckets while still counted.
+            CHECK(h.bucket_total() == h.count());
+            CHECK(h.percentile(100.0) >= highest);
+        }
+    }
+}
+
+TEST_CASE("a range beyond 2^63 is clamped rather than looped on forever",
+          "[histogram][sizing]") {
+    // `covered <<= 1` wraps to zero past 2^63, and `0 < highest` is true
+    // forever. Construction hung. A caller passing UINT64_MAX is asking for
+    // "no practical limit", so clamp and carry on rather than diverge.
+    Histogram h(std::numeric_limits<std::uint64_t>::max(), 3);
+    h.record(1'000'000);
+    CHECK(h.count() == 1);
+    CHECK(h.max() == 1'000'000);
+}
+
+TEST_CASE("merging incompatible layouts is refused, not silently wrong",
+          "[histogram][sizing]") {
+    // counts_.size() is (bucket_count + 1) * sub_bucket_half_count, and
+    // different (range, significant_figures) pairs collide on that product
+    // while mapping values to indices completely differently. Merging across
+    // such a pair produced plausible, silently wrong percentiles.
+    Histogram coarse(2'000'000'000'000ULL, 3);
+    Histogram fine(30'000, 4);
+    REQUIRE(coarse.bucket_layout() != fine.bucket_layout());
+
+    for (int i = 0; i < 990; ++i) {
+        fine.record(5'000);
+    }
+    for (int i = 0; i < 10; ++i) {
+        fine.record(20'000);
+    }
+    const std::uint64_t truth = fine.percentile(50.0);
+
+    CHECK_FALSE(coarse.merge(fine));  // Refused.
+    CHECK(coarse.count() == 0);
+
+    Histogram same(30'000, 4);
+    CHECK(same.merge(fine));  // Same layout: accepted.
+    CHECK(same.count() == 1'000);
+    CHECK(same.percentile(50.0) == truth);
 }

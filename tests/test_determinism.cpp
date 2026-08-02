@@ -151,3 +151,46 @@ TEST_CASE("a book rebuilt after clear matches one built fresh", "[determinism]")
 
     CHECK(reused.state_hash() == replay<ArrayBook>(stream).state_hash());
 }
+
+// ---------------------------------------------------------------------------
+// The golden hash
+//
+// Every other test in this file compares a hash to another hash computed in
+// the same process on the same machine. That proves each platform agrees with
+// itself, which is not the claim. The claim is that Linux, macOS and Windows
+// agree with EACH OTHER, and the only way to check that without shipping an
+// artifact between CI jobs is to write the number down.
+//
+// If this fails, do not update the constant to make it green. A changed hash
+// means either the book's iteration order or the hash construction changed —
+// the first is a correctness bug, the second is a deliberate format break that
+// invalidates every capture ever verified against it.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("a canonical stream hashes to the same constant on every platform",
+          "[determinism][golden]") {
+    ArrayBook array(InstrumentSpec{"BTC/USD", 1, 8});
+    MapBook map(InstrumentSpec{"BTC/USD", 1, 8});
+    for (const Update& u : canonical_stream(20'000)) {
+        array.apply(u.side, Price{u.price}, Qty{u.qty});
+        map.apply(u.side, Price{u.price}, Qty{u.qty});
+    }
+
+    constexpr std::uint64_t kGoldenStateHash = 0x5EA7472EED71E53EULL;
+    CHECK(array.state_hash() == kGoldenStateHash);
+    CHECK(map.state_hash() == kGoldenStateHash);
+    CHECK(kraken_checksum(array) == kraken_checksum(map));
+}
+
+TEST_CASE("the state hash distinguishes which side a level is on",
+          "[determinism][golden]") {
+    // The hash mixed a side tag and then mantissas, with no level count and no
+    // separator, so the tag was indistinguishable from a mantissa: one bid at
+    // (1, 1) and one ask at (1, 1) produced identical hashes. A determinism
+    // gate that cannot tell a bid from an ask is not a gate.
+    MapBook bid_only(InstrumentSpec{"BTC/USD", 1, 8});
+    MapBook ask_only(InstrumentSpec{"BTC/USD", 1, 8});
+    bid_only.apply(Side::kBid, Price{1}, Qty{1});
+    ask_only.apply(Side::kAsk, Price{1}, Qty{1});
+    CHECK(bid_only.state_hash() != ask_only.state_hash());
+}

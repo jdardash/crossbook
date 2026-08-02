@@ -317,3 +317,53 @@ TEST_CASE("stats account for every frame", "[feed]") {
     CHECK(s.rejected == 1);
     CHECK(s.snapshots_applied == 1);
 }
+
+// ---------------------------------------------------------------------------
+// Snapshot decode failure
+// ---------------------------------------------------------------------------
+
+TEST_CASE("a snapshot that failed to decode is refused, not applied as empty",
+          "[feed][snapshot]") {
+    // apply_snapshot never consulted msg.ok(). A truncated REST body therefore
+    // cleared the book, applied nothing, and set synced_ = true: an empty book
+    // reporting itself as current. Everything downstream — best bid, executable
+    // size, the consolidated view — then reads a book that says the market is
+    // empty and says it with confidence.
+    auto feed = make_binance();
+    const DecodedMessage& good = feed.decoder().decode_snapshot(
+        R"({"lastUpdateId":100,"bids":[["45283.50","1.00000000"]],"asks":[]})");
+    REQUIRE(feed.apply_snapshot(good) == FeedStatus::kApplied);
+    REQUIRE(feed.book().bids().size() == 1);
+
+    const DecodedMessage& truncated =
+        feed.decoder().decode_snapshot(R"({"lastUpdateId":200,"bids":[["45283.50",)");
+    REQUIRE_FALSE(truncated.ok());
+
+    CHECK(feed.apply_snapshot(truncated) == FeedStatus::kRejected);
+    CHECK(feed.book().bids().size() == 1);  // Untouched, not cleared.
+    CHECK(feed.stats().rejected >= 1);
+    CHECK(feed.divergences().count(DivergenceKind::kMalformedMessage) >= 1);
+}
+
+TEST_CASE("a spot feed recovers from a resync instead of looping", "[feed][spot]") {
+    // End to end over the sequence anchor: after a gap the buffer is dropped
+    // and the stream necessarily resumes at lastUpdateId + 1. Under a
+    // futures-shaped anchor that read as a fresh gap, so every recovery
+    // demanded another snapshot and the feed never came back.
+    auto feed = make_binance();
+    const DecodedMessage& first = feed.decoder().decode_snapshot(
+        R"({"lastUpdateId":100,"bids":[["45283.50","1.00000000"]],"asks":[]})");
+    REQUIRE(feed.apply_snapshot(first) == FeedStatus::kApplied);
+    REQUIRE(feed.handle(binance_update(101, 105)) == FeedStatus::kApplied);
+    REQUIRE(feed.handle(binance_update(108, 110)) == FeedStatus::kNeedsSnapshot);
+
+    const DecodedMessage& second = feed.decoder().decode_snapshot(
+        R"({"lastUpdateId":200,"bids":[["45283.50","2.00000000"]],"asks":[]})");
+    REQUIRE(feed.apply_snapshot(second) == FeedStatus::kApplied);
+
+    // The realistic resumption, not a hand-picked straddling event.
+    CHECK(feed.handle(binance_update(201, 205)) == FeedStatus::kApplied);
+    CHECK(feed.handle(binance_update(206, 210)) == FeedStatus::kApplied);
+    CHECK(feed.synced());
+    CHECK(feed.divergences().count(DivergenceKind::kSequenceGap) == 1);
+}

@@ -80,10 +80,23 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCROSSBOOK_BUILD_TESTS=ON
       - name: Build
         run: cmake --build build --config Release --parallel
+      # Run the test binary with a Catch2 TAG spec, not `ctest -R`.
+      #
+      # `ctest -R` filters on test NAMES, and catch_discover_tests registers
+      # Catch2 test-case names while emitting no labels. "determinism" and
+      # "equivalence" are tags, so they matched nothing: this job selected 13
+      # checksum-named tests and zero of the suites it is named after, then
+      # went green on three platforms for weeks. A gate that cannot fail is
+      # worse than no gate, because it is reported as evidence.
+      #
+      # Catch2 exits non-zero when a filter matches nothing, so a future rename
+      # breaks the build instead of silently emptying it.
       - name: Determinism and equivalence suites
-        run: >
-          ctest --test-dir build --build-config Release --output-on-failure
-          -R "determinism|equivalence|checksum"
+        shell: bash
+        run: |
+          BIN=build/tests/crossbook_tests
+          [ -x "$BIN" ] || BIN=build/tests/Release/crossbook_tests.exe
+          "$BIN" "[determinism],[equivalence],[checksum]" --order decl
 
   sanitizers:
     name: sanitizers (asan+ubsan)
@@ -147,3 +160,33 @@ jobs:
             leak-*
             timeout-*
           if-no-files-found: ignore
+
+  # The Contributing section calls both non-negotiable rules "mechanically
+  # checked". Rule 2 (no allocation) has a test. Rule 1 (no floating point in
+  # the book) had nothing at all — no static_assert, no lint, no grep — so the
+  # claim was half true and the half that was false is the one the determinism
+  # argument rests on.
+  invariants:
+    name: invariants (no float in the book)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: No floating point in the book path
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Reporting and measurement code (histogram, replay, divergence) may
+          # use double: percentiles and rates are ratios. The book path may not,
+          # because that is what makes the state hash portable and the exchange
+          # checksum reproducible.
+          FILES="include/crossbook/book.hpp include/crossbook/fixed.hpp \
+                 include/crossbook/checksum.hpp include/crossbook/l3.hpp \
+                 include/crossbook/types.hpp include/crossbook/execution.hpp \
+                 include/crossbook/consolidated.hpp"
+          # Strip // comments and block comments before matching, so the files
+          # can go on explaining why they contain no floating point.
+          if sed -e 's://.*::' $FILES | grep -nE '\b(float|double|long double)\b'; then
+            echo "::error::floating point found in the book path (see rule 1 in README Contributing)"
+            exit 1
+          fi
+          echo "clean: no floating point in the book path"
