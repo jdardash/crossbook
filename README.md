@@ -19,8 +19,20 @@ attached, not an assertion.
 
 ## Why this is unusual
 
-Crypto venues hand you a correctness oracle for free, and almost nobody collects
-it:
+Crypto venues hand you a correctness oracle for free, and the handlers that do
+collect it treat it as optional. [cryptofeed](https://github.com/bmoscon/cryptofeed/blob/master/docs/book_validation.md)
+validates across six venues behind a `checksum_validation=True` flag,
+[NautilusTrader](https://nautilustrader.io/docs/latest/integrations/kraken/)
+does Kraken L3 by default but needs credentials for it, and
+[ccapi](https://github.com/crypto-chassis/ccapi) — the closest C++ analog —
+implements checksums for OKX and Bitfinex, defaults them off, and has none for
+Kraken at all. cryptofeed's own docs explain why they are opt-in: **10 to 100
+microseconds per update.**
+
+So the claim here is not that verification is novel. It is that verification
+should not be a flag, and it only stops being one when it costs 506 ns instead
+of 50 µs — which is a consequence of the fixed-point decision below, not of
+being clever. What each venue hands you:
 
 | Venue | Ground truth | Public? |
 |---|---|---|
@@ -29,10 +41,12 @@ it:
 | **Binance** futures diff-depth | `pu` continuity field | Yes, no credentials |
 | **Coinbase** `full` | per-message `sequence` for gap detection | Requires auth |
 
-In equities the equivalent data can't be redistributed, which is why every
-public ITCH order book repo ships without runnable data. Here, `crossbook`'s
-correctness claim is reproducible by anyone who clones it — no API key, no paid
-feed, no sample file to trust.
+In equities the equivalent data can't be redistributed, which is why public ITCH
+order book repositories generally ship without runnable data and ask to be
+believed. Here, `crossbook`'s correctness claim is reproducible by anyone who
+clones it — no API key, no paid feed, no sample file to trust. The committed
+capture and the match rate it produces are in
+[The measurement](#the-measurement) below.
 
 ## The detail that makes it cheap
 
@@ -46,9 +60,10 @@ the instrument's scale.
 
 So storing prices as scaled `int64` mantissas — rather than `double` — turns
 checksum generation into an integer-to-ASCII with no formatting step and no
-rounding to get wrong. A `double`-based book physically cannot reproduce the
-exchange's checksum without round-tripping through decimal formatting and
-reintroducing the error it was trying to avoid.
+rounding to get wrong. A `double`-based book has to format its way back to
+decimal to reproduce the checksum: a step that costs more than the comparison it
+enables, and that has to be exactly right at every instrument's scale. The
+integer path does not have the step.
 
 Fixed-point here isn't a style preference. **The venue's own verification
 algorithm requires it.** That's why the verifier runs on every update in the hot
@@ -58,9 +73,19 @@ The identity has one precondition — the venue must spell values canonically at
 the instrument's scale — and that precondition is [documented, tested, and
 guarded at ingest](include/crossbook/fixed.hpp) rather than assumed.
 
-## Correctness, by five independent mechanisms
+## Correctness: one external oracle, four internal checks
 
-1. **Exchange checksum.** Kraken's CRC32, recomputed locally on every update.
+The distinction matters, and calling all five "independent" would blur exactly
+the point this README opens with. Only the first compares the book against
+something outside this repository. The other four are consistency checks — they
+are worth having, they catch real bugs, and they cannot tell you that your
+reading of the venue's spec was wrong. That is the checksum's job, and it is why
+the checksum is the one that runs on live data.
+
+1. **Exchange checksum — the external oracle.** Kraken's CRC32, recomputed
+   locally on every update. The only mechanism here that can find a bug in what
+   we *believe* about Kraken, and
+   [it did](#live-verification-found-a-real-bug).
 2. **Differential testing.** Two independent book implementations — a `std::map`
    reference and a tick-indexed array — driven through identical event streams,
    with full state compared after *every single update*. Plus a
@@ -113,7 +138,7 @@ platform:
 
 ```bash
 ./build/release/tools/crossbook_verify --replay tests/fixtures/kraken_btcusd_l2.cbcap
-# 301 of 301 checksums matched, state hash 080281c2dd87183f
+# 301 of 301 checksums matched, state hash e9613af632f40653
 ```
 
 CI runs exactly that on Linux, macOS and Windows on every push, and asserts the
@@ -188,6 +213,24 @@ Checksum cost is independent of book depth (only 10 levels per side are ever
 read) and allocation-free, so verifying every update costs well under a
 microsecond.
 
+**What the 8.5x is actually for.** It is not the headline it looks like, and
+pretending otherwise invites the obvious question. Across a whole Kraken frame:
+
+| Stage | ns | share |
+|---|---|---|
+| JSON decode | ~960 | 65% |
+| Kraken checksum | ~500 | 34% |
+| book update | ~18 | **1.4%** |
+
+So swapping the tick-indexed array back for a `std::map` would cost roughly
+**9% end to end**, not 8.5x. The array's speedup is not what makes the library
+fast — decode dominates, and that is where the remaining work is. What the
+speedup buys is *headroom*: it is why verifying **every** update is affordable
+instead of sampled, which is the trade this library exists to make and the one
+the handlers cited at the top declined. A book update that cost 77 ns instead of
+9 ns would not be slow; it would just make the 506 ns checksum harder to justify
+on every message.
+
 **Methodology.** Median of 7 repetitions, Google Benchmark, MSVC 19.50 `/O2`,
 Windows 11, 16 logical cores @ 2995 MHz. Standard deviation was under 5% of
 median except where noted in the raw output. Reproduce with
@@ -231,7 +274,13 @@ bid", versus 4 ns for `std::map` — because every read walked ~32,000 empty slo
 Correct, fully passing its equivalence tests, and completely useless: every
 quoting decision reads the touch. The fix was a maintained best-index hint, and
 the differential oracle confirmed the optimisation changed no behaviour. Numbers
-in the table above are post-fix; the commit history has both.
+in the table above are post-fix.
+
+That one happened before the first commit, so unlike the depth-trim bug above
+you cannot dig it out of the history — take it as an anecdote about why the
+benchmarks exist, not as evidence. The checksum bug is the one with the audit
+trail: a capture you can replay, a fix you can diff, and a test that fails
+without it.
 
 ## Quick start
 
@@ -251,10 +300,23 @@ Header-only, so consuming it is just an include path:
 include(FetchContent)
 FetchContent_Declare(crossbook
     GIT_REPOSITORY https://github.com/jdardash/crossbook.git
-    GIT_TAG v0.1.0)
+    GIT_TAG v0.3.0
+    GIT_SHALLOW TRUE
+    SYSTEM)
 FetchContent_MakeAvailable(crossbook)
 target_link_libraries(your_target PRIVATE crossbook::crossbook)
 ```
+
+Or vendor it. There is no generated header, no configure step, and no
+dependency outside the standard library, so copying the tree is a complete
+install — and for a lot of desks that is the honest answer:
+
+```bash
+cp -r include/crossbook third_party/
+```
+
+`include/` is the entire library. `find_package(crossbook CONFIG REQUIRED)`
+works too, against an installed prefix.
 
 ```cpp
 #include "crossbook/book.hpp"
@@ -407,6 +469,36 @@ explicit instead of burying it:
   past a configured age are dropped rather than quoted.
 - **Local clocks only.** Venue timestamps are never compared to each other.
 
+## Footprint, threading, and running many instruments
+
+The questions a feed-handler engineer asks within a minute of reading
+"tick-indexed array", answered plainly rather than left to be inferred.
+
+**Memory.** `ArraySide` defaults to 65,536 slots of `int64`, so **512 KiB per
+side and 1 MiB per `ArrayBook`, allocated up front whether the book is full or
+empty.** At Kraken BTC/USD's 0.1 tick that window spans about $6.5k. Two
+hundred instruments is therefore ~200 MiB of windows, which is the number to
+budget against. `MapBook` has no floor and costs roughly 64 B per live level;
+`Feed` is templated on the book type, so `Feed<Decoder, MapBook>` is a
+one-word change when footprint matters more than update cost. The slot count is
+a constructor parameter — 8,192 slots (64 KiB/side) is ample for a depth-10 or
+depth-100 subscription and lets far more books stay resident in L2.
+
+**Prices outside the window.** They are not dropped. They go to an overflow
+container and stay correct there, and the window re-anchors around the touch
+once enough have accumulated. That path is the one most likely to harbour a bug,
+which is why the differential test hammers it — but it is also genuinely more
+expensive than the array fast path, so a book whose *live span* persistently
+exceeds the window is one that should be using `MapBook`.
+
+**Threading.** The library is single-threaded and contains no `std::mutex`,
+`std::atomic`, or `std::thread` by design. One `Feed` belongs to one thread; if
+another thread reads the book, you supply the synchronisation. Nothing here
+publishes a consistent snapshot for you, and `Feed::handle` is synchronous with
+no internal queue, so backpressure between your socket and the handler is also
+yours to design. This is a deliberate boundary — the same one that keeps the
+correctness core testable offline — not an oversight, but it is your problem
+and the README should say so.
 
 ## What this is not
 
