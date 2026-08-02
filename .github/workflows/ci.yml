@@ -184,13 +184,20 @@ jobs:
 
       # The gate is only honest if the floor compiler is the one actually
       # running. -T version=14.30 fails configure when the toolset is missing,
-      # but a claim this file once got wrong is worth asserting twice.
+      # but a claim this file once got wrong is worth asserting twice. The VS
+      # generator does not record CMAKE_CXX_COMPILER in the cache (the first
+      # version of this step indexed a null for exactly that reason), so the
+      # path comes from the configure log.
       - name: The compiler in use really is 19.30
         shell: pwsh
         run: |
-          $cl = (Select-String -Path build-floor\CMakeCache.txt -Pattern 'CMAKE_CXX_COMPILER:[^=]*=(.*)').Matches[0].Groups[1].Value
+          $log = "build-floor/CMakeFiles/CMakeConfigureLog.yaml"
+          if (-not (Test-Path $log)) { throw "no configure log at $log" }
+          $match = Select-String -Path $log -Pattern '([A-Za-z]:[^"]*?MSVC[/\\]14\.\d+\.\d+[/\\]bin[/\\]Host[Xx]64[/\\]x64[/\\]cl\.exe)' | Select-Object -First 1
+          if (-not $match) { throw "no MSVC cl.exe path found in the configure log" }
+          $cl = $match.Matches[0].Groups[1].Value
           Write-Host "compiler: $cl"
-          $banner = & $cl 2>&1 | Select-Object -First 1
+          [string]$banner = (& $cl 2>&1 | Select-Object -First 1)
           Write-Host "banner:   $banner"
           if ($banner -notmatch 'Version 19\.30') { throw "expected cl 19.30, got: $banner" }
 
