@@ -232,7 +232,7 @@ for (std::string_view frame : frames_from_your_transport) {
 
 ## Status
 
-**v0.2 — decoders, recovery, and honest latency.**
+**v0.3 — the roadmap is done, except the socket.**
 
 - [x] Exact fixed-point decimal, refuses to round rather than silently rounding
 - [x] L2 book, two implementations, differentially tested against each other
@@ -246,14 +246,66 @@ for (std::string_view frame : frames_from_your_transport) {
 - [x] Feed handler with resnapshot recovery and staleness detection
 - [x] HDR histogram with coordinated-omission correction
 - [x] Open-loop replay harness measuring against the schedule
-- [x] 139 test cases / 841 assertions, `-Werror`, ASan + UBSan, four fuzz targets
-- [ ] Websocket transport — **not built.** Bring your own frames.
-- [ ] L3 / order-by-order books (v0.4)
-- [ ] Cross-venue consolidated book and `executable_size` (v0.4)
+- [x] L3 order-by-order book: arena-pooled intrusive queues, open-addressed
+      id lookup, and queue position
+- [x] `executable_size` and `cost_to_trade` — what you can actually trade
+- [x] Consolidated cross-venue book: fee-adjusted, staleness-filtered
+- [x] 196 test cases / 70k assertions, `-Werror`, ASan + UBSan, six fuzz targets
+- [ ] Websocket transport — **deliberately not built.** Bring your own frames.
 
-The library decodes, verifies, and recovers; it does not open sockets. Feed it
-frames from whatever transport you like — that boundary keeps the correctness
-core testable offline and free of a TLS dependency.
+The library decodes, verifies, recovers, and prices execution; it does not open
+sockets. That boundary is a choice, not an omission: TLS would end the
+zero-dependency property that makes a header-only library adoptable, and socket
+plumbing is both the least interesting part and the part every adopter already
+has. Hand it frames from whatever transport you like.
+
+## What you can actually trade
+
+The touch is not a size. "Best ask 45283.6" says nothing about whether you can
+buy one coin there or fifty, and sizing a position off it is the most common way
+a spread that looked profitable turns out not to be.
+
+```cpp
+#include "crossbook/execution.hpp"
+
+// How much can I buy within 5 bps of the touch?
+const Execution e = executable_size(book, Side::kAsk, from_bps(5));
+e.qty;              // Total available inside the limit
+e.vwap;             // What you would actually pay, size-weighted
+e.slippage;         // Cost against the touch, in 0.01 bps units
+e.depth_exhausted;  // Ran out of book vs stopped by the limit — these differ
+
+// What does one coin cost?
+const Execution c = cost_to_trade(book, Side::kAsk, Qty{100'000'000});
+```
+
+`cost_to_trade` reports a partial fill rather than extrapolating a price for
+size that is not in the book, because inventing depth is how a backtest produces
+returns a live account cannot.
+
+This is also the concrete reason a *correct* book matters rather than an
+approximately correct one. The touch is refreshed constantly and self-corrects;
+a level ten deep can sit there wrong for hours. Depth is exactly what a
+reconstruction bug corrupts silently, and it is exactly what these functions
+read.
+
+## Cross-venue, without pretending there is an NBBO
+
+Equities have Reg NMS, a SIP, and a legally defined national best bid and offer.
+Crypto has none of it — no authority on the best price, no shared clock, no
+obligation for venues to agree. `ConsolidatedBook` makes each judgement call
+explicit instead of burying it:
+
+- **Fees, not quotes.** Taker fees are large relative to crypto spreads, so the
+  venue with the best headline price is frequently not the cheapest to trade.
+  [A test](tests/test_consolidated.cpp) pins a case where a 26 bps venue quoting
+  3 ticks better loses to a 1 bp venue.
+- **Size changes the answer.** A venue can be best on one coin and worst on
+  fifty. `best_execution` therefore takes a quantity and walks each venue's real
+  depth — a size-free "best venue" is not a well-defined question.
+- **Staleness excludes.** A quiet venue looks exactly like a stable one. Entries
+  past a configured age are dropped rather than quoted.
+- **Local clocks only.** Venue timestamps are never compared to each other.
 
 ## What this is not
 
@@ -282,6 +334,11 @@ is right" is something you can check rather than something you have to believe.
   coordinated-omission correction
 - [`replay.hpp`](include/crossbook/replay.hpp) — open-loop pacing, and why the
   spin threshold is 20ms
+- [`l3.hpp`](include/crossbook/l3.hpp) — arena, intrusive queues, and why a
+  size reduction keeps priority while an increase does not
+- [`execution.hpp`](include/crossbook/execution.hpp) — why the unit is 0.01 bps
+- [`consolidated.hpp`](include/crossbook/consolidated.hpp) — the four judgement
+  calls behind a crypto "best price"
 - [`bench_book.cpp`](bench/bench_book.cpp) — what the numbers mean and don't
 
 ## References

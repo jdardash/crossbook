@@ -24,6 +24,9 @@ add_executable(crossbook_tests
     test_venues.cpp
     test_feed.cpp
     test_replay.cpp
+    test_execution.cpp
+    test_consolidated.cpp
+    test_l3.cpp
 )
 
 target_link_libraries(crossbook_tests PRIVATE
