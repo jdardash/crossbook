@@ -30,6 +30,7 @@
 #include <cstdint>
 #include <iterator>
 #include <map>
+#include <utility>
 #include <vector>
 
 #include "crossbook/types.hpp"

@@ -39,9 +39,11 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -241,7 +243,7 @@ public:
             return false;
         }
         const std::int64_t delta = best_ask.effective.ticks - best_bid.effective.ticks;
-        constexpr std::int64_t kMax = std::numeric_limits<std::int64_t>::max();
+        constexpr std::int64_t kMax = (std::numeric_limits<std::int64_t>::max)();
         const std::int64_t magnitude = delta < 0 ? -delta : delta;
         if (magnitude != 0 && magnitude > kMax / 1'000'000) {
             return false;

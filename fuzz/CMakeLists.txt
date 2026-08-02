@@ -6,7 +6,10 @@ endif()
 
 function(add_fuzz_target name source)
     add_executable(${name} ${source})
-    target_link_libraries(${name} PRIVATE crossbook::crossbook)
+    # crossbook_warnings is opted into explicitly: the library stopped exporting
+    # it so that consumers do not inherit it, which means our own targets have to
+    # ask.
+    target_link_libraries(${name} PRIVATE crossbook::crossbook crossbook_warnings)
     # Fuzzing without a sanitizer finds crashes but not the memory errors that
     # precede them, which is most of the value.
     target_compile_options(${name} PRIVATE -fsanitize=fuzzer,address,undefined -g)

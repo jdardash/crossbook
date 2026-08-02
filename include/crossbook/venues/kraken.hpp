@@ -26,7 +26,9 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string_view>
+#include <utility>
 
 #include "crossbook/fixed.hpp"
 #include "crossbook/json.hpp"

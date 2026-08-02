@@ -35,8 +35,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <map>
+#include <utility>
 #include <vector>
 
 #include "crossbook/types.hpp"
@@ -49,7 +51,7 @@ using OrderId = std::uint64_t;
 /// Index into the order arena. A sentinel stands in for "none" so the hot path
 /// never dereferences a null pointer.
 using OrderRef = std::uint32_t;
-inline constexpr OrderRef kNoOrder = std::numeric_limits<OrderRef>::max();
+inline constexpr OrderRef kNoOrder = (std::numeric_limits<OrderRef>::max)();
 
 /// One resting order.
 struct Order {

@@ -109,7 +109,7 @@ namespace detail {
         return 0;
     }
     const std::int64_t delta = moved > reference ? moved - reference : reference - moved;
-    constexpr std::int64_t kMax = std::numeric_limits<std::int64_t>::max();
+    constexpr std::int64_t kMax = (std::numeric_limits<std::int64_t>::max)();
     if (delta != 0 && delta > kMax / 1'000'000) {
         return 0;
     }
@@ -158,7 +158,7 @@ template <typename SideImpl>
             return false;
         }
 
-        constexpr std::int64_t kMax = std::numeric_limits<std::int64_t>::max();
+        constexpr std::int64_t kMax = (std::numeric_limits<std::int64_t>::max)();
         if (level.qty.units != 0 && level.price.ticks > kMax / level.qty.units) {
             overflowed = true;
             return false;
@@ -228,7 +228,7 @@ template <typename SideImpl>
     book.side(side).for_each([&](const Level& level) {
         const std::int64_t take = (level.qty.units < remaining) ? level.qty.units : remaining;
 
-        constexpr std::int64_t kMax = std::numeric_limits<std::int64_t>::max();
+        constexpr std::int64_t kMax = (std::numeric_limits<std::int64_t>::max)();
         if (take != 0 && level.price.ticks > kMax / take) {
             overflowed = true;
             return false;

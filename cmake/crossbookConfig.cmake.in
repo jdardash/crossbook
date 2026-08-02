@@ -1,0 +1,15 @@
+@PACKAGE_INIT@
+
+# crossbook is header-only and depends on nothing outside the standard library,
+# so there is no find_dependency() block here and there is not supposed to be
+# one. The transport (crossbook::net) is the only part with an external
+# dependency and it is deliberately not installed: consuming crossbook must
+# never drag a TLS stack into someone else's link line.
+#
+# @PACKAGE_INIT@ above expands to the prefix-relocation preamble, which is why
+# this file works from any install prefix rather than only the one it was
+# configured for.
+
+include("${CMAKE_CURRENT_LIST_DIR}/crossbookTargets.cmake")
+
+check_required_components(crossbook)

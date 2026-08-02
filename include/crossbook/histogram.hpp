@@ -152,7 +152,7 @@ public:
         if (total_count_ == 0) {
             return 0;
         }
-        p = std::clamp(p, 0.0, 100.0);
+        p = (std::clamp)(p, 0.0, 100.0);
 
         // Round up: the reported value must be one an observation actually
         // reached, never an interpolation between buckets.
@@ -176,14 +176,20 @@ public:
                 // percentile(100) == max() instead of returning a figure no
                 // observation ever reached. A latency table where p99.99
                 // exceeds the maximum is one nobody trusts twice.
-                return std::min(highest_equivalent_value(value_at_index(i)), max_);
+                return (std::min)(highest_equivalent_value(value_at_index(i)), max_);
             }
         }
         return max_;
     }
 
-    [[nodiscard]] std::uint64_t min() const noexcept { return total_count_ == 0 ? 0 : min_; }
-    [[nodiscard]] std::uint64_t max() const noexcept { return total_count_ == 0 ? 0 : max_; }
+    // The parentheses around the names are not decoration. <windows.h> defines
+    // function-like `min` and `max` macros unless the consumer sets NOMINMAX,
+    // and a declarator spelled `min()` is a zero-argument invocation of a
+    // two-argument macro: the error lands inside this file, on a desk that did
+    // nothing wrong. `(min)()` is not a macro invocation, so it survives.
+    // Requiring NOMINMAX of a consumer is the workaround, not the fix.
+    [[nodiscard]] std::uint64_t(min)() const noexcept { return total_count_ == 0 ? 0 : min_; }
+    [[nodiscard]] std::uint64_t(max)() const noexcept { return total_count_ == 0 ? 0 : max_; }
     [[nodiscard]] std::uint64_t count() const noexcept { return total_count_; }
     [[nodiscard]] std::uint64_t overflow_count() const noexcept { return overflow_count_; }
 
@@ -199,7 +205,7 @@ public:
         total_count_ = 0;
         total_sum_ = 0;
         overflow_count_ = 0;
-        min_ = std::numeric_limits<std::uint64_t>::max();
+        min_ = (std::numeric_limits<std::uint64_t>::max)();
         max_ = 0;
     }
 
@@ -223,8 +229,8 @@ public:
             counts_[i] += other.counts_[i];
         }
         if (other.total_count_ > 0) {
-            min_ = (total_count_ == 0) ? other.min_ : std::min(min_, other.min_);
-            max_ = std::max(max_, other.max_);
+            min_ = (total_count_ == 0) ? other.min_ : (std::min)(min_, other.min_);
+            max_ = (std::max)(max_, other.max_);
         }
         total_count_ += other.total_count_;
         total_sum_ += other.total_sum_;
@@ -335,7 +341,7 @@ private:
     std::uint64_t total_count_{0};
     std::uint64_t total_sum_{0};
     std::uint64_t overflow_count_{0};
-    std::uint64_t min_{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t min_{(std::numeric_limits<std::uint64_t>::max)()};
     std::uint64_t max_{0};
 };
 
@@ -354,9 +360,11 @@ struct LatencyReport {
 };
 
 [[nodiscard]] inline LatencyReport summarise(const Histogram& h) {
-    return LatencyReport{h.count(),      h.min(),          h.percentile(50.0),
-                         h.percentile(90.0), h.percentile(99.0), h.percentile(99.9),
-                         h.percentile(99.99), h.max(),      h.mean()};
+    // `(h.min)()` for the same reason the declarations above are parenthesised:
+    // a call spelled `h.min()` is still a macro invocation to the preprocessor.
+    return LatencyReport{h.count(),           (h.min)(),          h.percentile(50.0),
+                         h.percentile(90.0),  h.percentile(99.0), h.percentile(99.9),
+                         h.percentile(99.99), (h.max)(),          h.mean()};
 }
 
 }  // namespace crossbook

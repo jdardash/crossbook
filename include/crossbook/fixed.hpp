@@ -28,6 +28,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -96,7 +97,7 @@ constexpr bool checked_mul(std::int64_t a, std::int64_t b, std::int64_t& out) no
         out = 0;
         return true;
     }
-    constexpr std::int64_t kMax = std::numeric_limits<std::int64_t>::max();
+    constexpr std::int64_t kMax = (std::numeric_limits<std::int64_t>::max)();
     if (a > kMax / b) {
         return false;
     }
@@ -106,7 +107,7 @@ constexpr bool checked_mul(std::int64_t a, std::int64_t b, std::int64_t& out) no
 
 /// Add with overflow detection.
 constexpr bool checked_add(std::int64_t a, std::int64_t b, std::int64_t& out) noexcept {
-    constexpr std::int64_t kMax = std::numeric_limits<std::int64_t>::max();
+    constexpr std::int64_t kMax = (std::numeric_limits<std::int64_t>::max)();
     if (a > kMax - b) {
         return false;
     }

@@ -11,7 +11,20 @@ AllowShortFunctionsOnASingleLine: Inline
 AlwaysBreakTemplateDeclarations: Yes
 SpacesBeforeTrailingComments: 2
 
-# Our headers first, then the standard library, then third-party. Keeps the
-# dependency direction visible at a glance.
+# Include blocks are left where the author put them and sorted within
+# themselves; nothing here reorders across a blank line. The previous comment
+# claimed an ordering ("our headers first, then the standard library, then
+# third-party") that `IncludeBlocks: Preserve` does not enforce and that the
+# code does not follow -- every file in the tree writes the standard headers
+# first, then a blank line, then the `"crossbook/..."` block, which is the
+# opposite. A convention nothing checks and nobody follows is worse than none,
+# because the next reader believes it.
+#
+# The convention as actually practised, and as this config supports: one block
+# of `<...>` standard headers, a blank line, one block of `"crossbook/..."`
+# headers. Regrouping is deliberately not switched on -- it would rewrite every
+# file in the tree, and the tree is not yet formatted with this config at all
+# (see the `format` CI job, which checks changed lines rather than whole files
+# for exactly that reason).
 IncludeBlocks: Preserve
 SortIncludes: CaseSensitive
