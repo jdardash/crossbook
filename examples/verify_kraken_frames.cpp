@@ -104,6 +104,11 @@ std::string kraken_frame(std::string_view type, std::uint32_t checksum) {
     out += levels_json(kBids, sizeof(kBids) / sizeof(kBids[0]));
     out += ",\"checksum\":";
     out += std::to_string(checksum);
+    // Kraken stamps every data entry, and the decoder requires it: without a
+    // timestamp there is no staleness detection at all, and a feed whose socket
+    // died an hour ago would keep reporting itself as synced. A frame that
+    // omits it is refused rather than silently given ts = 0.
+    out += ",\"timestamp\":\"2026-08-01T12:00:00.000000Z\"";
     out += "}]}";
     return out;
 }
