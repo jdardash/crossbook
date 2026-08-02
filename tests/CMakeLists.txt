@@ -60,7 +60,11 @@ target_compile_definitions(crossbook_tests PRIVATE
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 include(Catch)
-catch_discover_tests(crossbook_tests)
+# Catch2 exits with code 4 when a run consisted only of SKIP()s. Without
+# mapping that, ctest reports an honestly-skipped [timing] test — one whose
+# contention probe found the machine too loaded to measure pacing — as FAILED,
+# which is precisely the false alarm the probes exist to prevent.
+catch_discover_tests(crossbook_tests PROPERTIES SKIP_RETURN_CODE 4)
 
 # ---------------------------------------------------------------------------
 # Self-containment

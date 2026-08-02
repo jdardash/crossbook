@@ -73,6 +73,21 @@ std::vector<ReplayEvent> make_capture(std::size_t count, Timestamp interval_ns,
     return true;
 }
 
+/// Burn CPU for `duration` without sleeping.
+///
+/// The slow-consumer sweep tests need a handler whose service time is
+/// controlled. sleep_for cannot provide that on Windows, where the default
+/// timer granularity is 15.6ms — a requested 200us sleep can return after
+/// 15ms, and "slow consumer" would then mean something different per
+/// platform. A spin is exact everywhere, and matches how the harness itself
+/// waits inside its threshold.
+void spin_for(std::chrono::nanoseconds duration) {
+    const auto end = std::chrono::steady_clock::now() + duration;
+    while (std::chrono::steady_clock::now() < end) {
+        // Spin.
+    }
+}
+
 }  // namespace
 
 TEST_CASE("replaying an empty capture is safe", "[replay]") {
@@ -296,4 +311,179 @@ TEST_CASE("real lateness is still reported", "[replay][omission]") {
 
     CHECK(r.behind_schedule > 0);
     CHECK(r.max_lateness > kDeadlineToleranceNs * 100);
+}
+
+// ---------------------------------------------------------------------------
+// Rate-vs-latency sweep
+// ---------------------------------------------------------------------------
+
+TEST_CASE("replay sweep of a degenerate capture reports nothing", "[replay][sweep]") {
+    // Fewer than two events define no rate, so there is no curve to plot and
+    // no x-axis to invent one on.
+    const SweepResult empty = replay_sweep({}, [](const ReplayEvent&) {});
+    CHECK(empty.points.empty());
+    CHECK_FALSE(empty.has_knee());
+
+    const SweepResult single = replay_sweep(make_capture(1, 1000), [](const ReplayEvent&) {});
+    CHECK(single.points.empty());
+    CHECK_FALSE(single.has_knee());
+}
+
+TEST_CASE("replay sweep reports monotonically increasing offered rates with honest sample counts",
+          "[replay][sweep]") {
+    // The x-axis of the curve comes from the schedule, so a rising ladder of
+    // multipliers must produce a rising ladder of offered rates regardless of
+    // how fast the runs happened to go. And the sample target must be honoured
+    // by tiling the capture, not by quietly reporting percentiles over the 200
+    // events one pass provides.
+    const auto events = make_capture(200, 10'000);  // 10us apart = 100k msg/s at 1x
+
+    SweepOptions options;
+    options.speeds = {1.0, 2.0, 5.0};
+    options.min_samples = 600;                    // Forces 3 tiled copies per rung.
+    options.p99_bound_ns = 3'600'000'000'000ULL;  // Not under test here.
+
+    const SweepResult sweep = replay_sweep(events, [](const ReplayEvent&) {}, options);
+
+    REQUIRE(sweep.points.size() == 3);
+    for (std::size_t i = 0; i < sweep.points.size(); ++i) {
+        const SweepPoint& p = sweep.points[i];
+        INFO("rung " << i << " speed=" << p.speed << " offered=" << p.offered_rate
+                     << " n=" << p.result.events);
+        // n is the honesty guarantee: at least the target, and exactly what
+        // the histogram summarised — a count that disagreed with the
+        // percentiles' population would make both meaningless.
+        CHECK(p.loops == 3);
+        CHECK(p.result.events >= options.min_samples);
+        CHECK(p.result.latency.count == p.result.events);
+        // 10us spacing at 1x is 100k msg/s; the splice gap is the median gap,
+        // so the tiled timeline keeps that rate exactly. Loose bounds — the
+        // property is the magnitude, not float equality.
+        CHECK(p.offered_rate > 90'000.0 * p.speed);
+        CHECK(p.offered_rate < 110'000.0 * p.speed);
+        if (i > 0) {
+            CHECK(p.offered_rate > sweep.points[i - 1].offered_rate);
+        }
+    }
+}
+
+TEST_CASE("a slow consumer fails the sweep at high multipliers but not low ones",
+          "[replay][sweep][timing]") {
+    if (!machine_can_keep_time()) {
+        SKIP("machine is too loaded to measure pacing");
+    }
+    // The sweep is only a measurement if it can fail. A handler that spins for
+    // 200us has a 10% duty cycle against 2ms gaps at 1x — comfortable — and a
+    // 1000% duty cycle against 20us gaps at 100x, where keeping pace is
+    // physically impossible. The low rung passing while the high rung fails is
+    // the whole shape of the curve in two points.
+    const auto events = make_capture(60, 2'000'000);  // 2ms apart
+
+    SweepOptions options;
+    options.speeds = {1.0, 100.0};
+    options.min_samples = 1;                      // One pass per rung keeps this fast.
+    options.p99_bound_ns = 3'600'000'000'000ULL;  // pass == kept_pace, nothing else.
+
+    // Best of three, exactly as the compression test above: the low rung
+    // passing is a claim about the harness AND the machine, and a preemption
+    // that lands mid-run fails an attempt without saying anything about the
+    // sweep. The high rung failing needs no retry — it is physically forced,
+    // and contention can only make it fail harder.
+    SweepResult sweep{};
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        sweep = replay_sweep(
+            events, [](const ReplayEvent&) { spin_for(std::chrono::microseconds(200)); },
+            options);
+        REQUIRE(sweep.points.size() == 2);
+        if (sweep.points[0].result.kept_pace()) {
+            break;
+        }
+    }
+
+    INFO("1x behind=" << sweep.points[0].result.behind_schedule
+                      << " 100x behind=" << sweep.points[1].result.behind_schedule);
+    CHECK(sweep.points[0].result.kept_pace());
+    CHECK_FALSE(sweep.points[1].result.kept_pace());
+
+    // Saturation should also be visible as achieved falling short of offered:
+    // 60 events at 200us each need 12ms of service against a 1.2ms schedule.
+    CHECK(sweep.points[1].achieved_rate < sweep.points[1].offered_rate);
+
+    REQUIRE(sweep.has_knee());
+    CHECK(sweep.knee == 0);
+}
+
+TEST_CASE("the sweep's reported knee is consistent with the per-rate kept_pace flags",
+          "[replay][sweep][timing]") {
+    if (!machine_can_keep_time()) {
+        SKIP("machine is too loaded to measure pacing");
+    }
+    // The knee is defined as the end of the passing prefix. With the p99 bound
+    // out of the picture, "passed" reduces to kept_pace, so the knee must sit
+    // exactly one rung before the first kept_pace == false — anything else and
+    // the conclusion line contradicts the table printed above it.
+    const auto events = make_capture(50, 1'000'000);  // 1ms apart
+
+    SweepOptions options;
+    options.speeds = {1.0, 2.0, 200.0};  // 10%, 20%, 2000% duty for a 100us handler.
+    options.min_samples = 1;
+    options.p99_bound_ns = 3'600'000'000'000ULL;
+
+    // Best of three, as above: the consistency property needs at least one
+    // rung on each side of the knee, and a preempted low rung collapses the
+    // passing prefix to nothing without testing the knee logic at all.
+    SweepResult sweep{};
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        sweep = replay_sweep(
+            events, [](const ReplayEvent&) { spin_for(std::chrono::microseconds(100)); },
+            options);
+        REQUIRE(sweep.points.size() == 3);
+        if (sweep.points[0].result.kept_pace()) {
+            break;
+        }
+    }
+    // The 200x rung cannot keep pace: 100us of service against 5us gaps.
+    CHECK_FALSE(sweep.points.back().result.kept_pace());
+
+    std::size_t first_failure = sweep.points.size();
+    for (std::size_t i = 0; i < sweep.points.size(); ++i) {
+        if (!sweep.points[i].result.kept_pace()) {
+            first_failure = i;
+            break;
+        }
+    }
+    REQUIRE(first_failure < sweep.points.size());
+    REQUIRE(first_failure > 0);  // The 1x rung must pass for a knee to exist.
+
+    REQUIRE(sweep.has_knee());
+    CHECK(sweep.knee == first_failure - 1);
+    for (std::size_t i = 0; i <= sweep.knee; ++i) {
+        CHECK(sweep.points[i].result.kept_pace());
+    }
+}
+
+TEST_CASE("the sweep stops the ladder once the consumer has fallen behind hard",
+          "[replay][sweep]") {
+    // Past the point where the worst lateness dwarfs the schedule, every
+    // faster rung measures a deeper backlog of the same failure. The ladder
+    // should keep the failing rung — it brackets the knee — and stop.
+    //
+    // 100us of forced service against 5us gaps accumulates ~4.7ms of backlog
+    // by the 50th event, far past the 1ms stop threshold below, and load on
+    // the machine can only push it further past. No timing guard needed: this
+    // test only asserts failure, and contention cannot make it pass.
+    const auto events = make_capture(50, 1'000'000);
+
+    SweepOptions options;
+    options.speeds = {200.0, 500.0, 1000.0};
+    options.min_samples = 1;
+    options.stop_lateness_ns = 1'000'000;  // 1ms: "hard" for a 5us schedule.
+
+    const SweepResult sweep = replay_sweep(
+        events, [](const ReplayEvent&) { spin_for(std::chrono::microseconds(100)); }, options);
+
+    REQUIRE(sweep.points.size() == 1);  // 500x and 1000x never ran.
+    CHECK(sweep.stopped_early);
+    CHECK_FALSE(sweep.points.front().result.kept_pace());
+    CHECK_FALSE(sweep.has_knee());
 }

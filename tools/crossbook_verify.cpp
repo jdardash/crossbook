@@ -83,6 +83,8 @@ struct Options {
     int pin_core{-1};   ///< >=0 pins the replay thread to that core.
     bool realtime{false};
     bool quiet{false};
+    bool sweep{false};  ///< Replay across a ladder of rates; report the curve.
+    std::uint64_t sweep_bound_ns{100'000};  ///< p99 bound defining the knee.
 };
 
 /// Pin this thread to one core.
@@ -128,6 +130,26 @@ struct Options {
 #else
     return false;
 #endif
+}
+
+/// The measurement-conditions block, shared by every path that prints latency
+/// figures so the paths cannot drift apart in what they disclose. A pinning
+/// call that silently failed would make the stated conditions a lie rather
+/// than merely absent, which is why each line reports what actually applied.
+void report_conditions(const Options& options) {
+    if (options.pin_core >= 0) {
+        std::printf("  core               %s %d\n",
+                    pin_to_core(options.pin_core) ? "pinned to" : "PIN FAILED for",
+                    options.pin_core);
+    } else {
+        std::puts("  core               not pinned (pass --pin N)");
+    }
+    if (options.realtime) {
+        std::printf("  priority           %s\n",
+                    raise_priority() ? "raised" : "RAISE FAILED, normal");
+    } else {
+        std::puts("  priority           normal (pass --realtime)");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -501,7 +523,101 @@ int run_replay_with(FeedT& feed, const crossbook::Capture& capture, Options& opt
 
     const std::int64_t start = steady_ns();
 
-    if (options.speed > 0.0) {
+    if (options.sweep) {
+        // The rate-vs-latency curve: replay the capture at each rung of a
+        // ladder of speed multipliers and report latency against offered
+        // rate. Latency stays flat while there is headroom and diverges near
+        // saturation; the artifact is the curve plus the knee — the highest
+        // rate that kept pace with p99 under the stated bound. A single-rate
+        // run cannot show either.
+        std::vector<ReplayEvent> events;
+        events.reserve(capture.frames().size());
+        for (const CapturedFrame& frame : capture.frames()) {
+            events.push_back(ReplayEvent{frame.ts_recv, frame.payload});
+        }
+
+        std::puts("\nrate-vs-latency sweep (open-loop per rate, default ladder up to 1000x)");
+        report_conditions(options);
+
+        SweepOptions sweep_options;
+        sweep_options.p99_bound_ns = options.sweep_bound_ns;
+        // Cold caches are not tail latency; same warm-up policy as --speed.
+        sweep_options.warmup_events = (std::min<std::size_t>)(events.size() / 20, 500);
+
+        std::printf(
+            "  knee bound p99 <= %llu ns; sample target %llu per rate; budget %.1f s per rate\n",
+            static_cast<unsigned long long>(sweep_options.p99_bound_ns),
+            static_cast<unsigned long long>(sweep_options.min_samples),
+            static_cast<double>(sweep_options.budget_ns_per_rate) / 1e9);
+
+        // One feed across the whole ladder: each tiled copy of the capture
+        // begins with the capture's snapshot, which re-syncs the book the
+        // same way reconnecting to the venue would.
+        const SweepResult sweep = replay_sweep(
+            events, [&](const ReplayEvent& event) { (void)feed.handle(event.frame); },
+            sweep_options);
+
+        if (sweep.points.empty()) {
+            std::puts("\n  capture too short to sweep: a rate needs at least two frames");
+        } else {
+            std::puts(
+                "\n   speed  offered(msg/s)  achieved(msg/s)     p50(ns)     p99(ns)"
+                "   p99.9(ns)     max(ns)         n  kept_pace");
+            bool any_thin_tail = false;
+            for (const SweepPoint& p : sweep.points) {
+                std::printf("  %5.0fx %15.0f %16.0f %11llu %11llu %11llu %11llu %9llu  %s%s\n",
+                            p.speed, p.offered_rate, p.achieved_rate,
+                            static_cast<unsigned long long>(p.result.latency.p50),
+                            static_cast<unsigned long long>(p.result.latency.p99),
+                            static_cast<unsigned long long>(p.result.latency.p999),
+                            static_cast<unsigned long long>(p.result.latency.max),
+                            static_cast<unsigned long long>(p.result.events),
+                            p.result.kept_pace() ? "yes" : "no",
+                            p.tail_honest() ? "" : "  *");
+                if (!p.tail_honest()) {
+                    any_thin_tail = true;
+                }
+            }
+            if (any_thin_tail) {
+                std::printf(
+                    "\n  * n < %llu: too few samples to resolve a p99.9 at this rate;"
+                    " read p50/p99 only.\n",
+                    static_cast<unsigned long long>(kHonestTailSamples));
+            }
+            if (sweep.stopped_early) {
+                std::puts(
+                    "  ladder stopped early: the consumer had fallen behind hard, and faster"
+                    " rungs would only measure a deeper backlog of the same failure.");
+            }
+
+            // The one-line conclusion. Every branch states the p99 bound the
+            // verdict was judged against, because "sustained X msg/s" is only
+            // a claim when its condition travels with it.
+            if (sweep.has_knee()) {
+                const SweepPoint& k = sweep.points[sweep.knee];
+                if (sweep.knee + 1 < sweep.points.size()) {
+                    std::printf(
+                        "\n  sustained %.0f msg/s with p99 = %.1f us; knee between %.0f and"
+                        " %.0f msg/s\n",
+                        k.offered_rate,
+                        static_cast<double>(k.result.latency.p99) / 1000.0,
+                        k.offered_rate, sweep.points[sweep.knee + 1].offered_rate);
+                } else {
+                    std::printf(
+                        "\n  sustained %.0f msg/s with p99 = %.1f us; no knee inside the swept"
+                        " range, every rung kept pace\n",
+                        k.offered_rate,
+                        static_cast<double>(k.result.latency.p99) / 1000.0);
+                }
+            } else {
+                std::printf(
+                    "\n  did not sustain even %.0f msg/s, the lowest swept rate, with p99 <="
+                    " %llu ns\n",
+                    sweep.points.front().offered_rate,
+                    static_cast<unsigned long long>(sweep.p99_bound_ns));
+            }
+        }
+    } else if (options.speed > 0.0) {
         // Open-loop: paced at the recorded inter-arrival times, so the latency
         // figures include queueing delay rather than measuring service time.
         std::vector<ReplayEvent> events;
@@ -515,19 +631,7 @@ int run_replay_with(FeedT& feed, const crossbook::Capture& capture, Options& opt
         // pinning call that silently failed would make the stated conditions a
         // lie rather than merely absent.
         std::printf("\nopen-loop replay at %.1fx\n", options.speed);
-        if (options.pin_core >= 0) {
-            std::printf("  core               %s %d\n",
-                        pin_to_core(options.pin_core) ? "pinned to" : "PIN FAILED for",
-                        options.pin_core);
-        } else {
-            std::puts("  core               not pinned (pass --pin N)");
-        }
-        if (options.realtime) {
-            std::printf("  priority           %s\n",
-                        raise_priority() ? "raised" : "RAISE FAILED, normal");
-        } else {
-            std::puts("  priority           normal (pass --realtime)");
-        }
+        report_conditions(options);
 
         ReplayOptions replay_options;
         replay_options.speed = options.speed;
@@ -649,6 +753,9 @@ void print_usage() {
         "  --replay <path>    verify a recorded capture instead of connecting\n"
         "  --speed <x>        replay open-loop at x times the recorded rate, and\n"
         "                     report latency percentiles measured against the schedule\n"
+        "  --sweep            replay across a ladder of rates and report the\n"
+        "                     rate-vs-latency curve and its saturation knee\n"
+        "  --sweep-bound <ns> p99 bound in ns that defines the knee (default 100000)\n"
         "  --pin <n>          pin the replay to one CPU core, so migration is not\n"
         "                     read as latency\n"
         "  --realtime         raise priority for the measurement\n"
@@ -696,6 +803,10 @@ int main(int argc, char** argv) {
             options.qty_scale = std::atoi(value("--qty-scale"));
         } else if (arg == "--speed") {
             options.speed = std::atof(value("--speed"));
+        } else if (arg == "--sweep") {
+            options.sweep = true;
+        } else if (arg == "--sweep-bound") {
+            options.sweep_bound_ns = static_cast<std::uint64_t>(std::atoll(value("--sweep-bound")));
         } else if (arg == "--pin") {
             options.pin_core = std::atoi(value("--pin"));
         } else if (arg == "--realtime") {
