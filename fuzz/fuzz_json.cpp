@@ -188,6 +188,23 @@ void check_validated(std::string_view value_raw, std::string_view input, int dep
     }
     CB_CHECK(within(value_raw, input));
 
+    // RFC 8259 permits whitespace around a document's top-level value, and
+    // well_formed accepts it, but every scalar assertion below is token-exact.
+    // The whole-document call therefore has to shed the padding first --
+    // "\t\t5" IS a valid document whose number token is "5", and the fuzzer
+    // proved the point on its second seeded run. Nested spans are already
+    // token-exact, so for them this is a no-op.
+    const std::size_t lead = json::skip_space(value_raw, 0);
+    value_raw.remove_prefix(lead);
+    while (!value_raw.empty()) {
+        const char last = value_raw.back();
+        if (last != ' ' && last != '\t' && last != '\n' && last != '\r') {
+            break;
+        }
+        value_raw.remove_suffix(1);
+    }
+    CB_CHECK(!value_raw.empty());  // well_formed refuses blank documents.
+
     // Transitivity: a part of a valid document is itself a valid document.
     CB_CHECK(json::well_formed(value_raw));
 

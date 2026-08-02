@@ -224,8 +224,7 @@ public:
         // Event time, milliseconds since epoch. Normalised to nanoseconds so
         // no consumer has to remember which venue used which unit.
         std::uint64_t event_ms = 0;
-        if (json::parse_u64(json::number_token(f.event_ms), event_ms) &&
-            event_ms <= kMaxEventMs) {
+        if (json::parse_u64(json::number_token(f.event_ms), event_ms) && event_ms <= kMaxEventMs) {
             // Bounded before scaling: int64 nanoseconds run out in April 2262,
             // and an event time past that is corruption. The frame still
             // applies -- sequence ids, not timestamps, decide validity here --
