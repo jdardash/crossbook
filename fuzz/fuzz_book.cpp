@@ -27,8 +27,8 @@ using namespace crossbook;
 
 namespace {
 
-constexpr std::int64_t kI64Max = std::numeric_limits<std::int64_t>::max();
-constexpr std::int64_t kI64Min = std::numeric_limits<std::int64_t>::min();
+constexpr std::int64_t kI64Max = (std::numeric_limits<std::int64_t>::max)();
+constexpr std::int64_t kI64Min = (std::numeric_limits<std::int64_t>::min)();
 constexpr auto kSlots = static_cast<std::int64_t>(ArraySide::kDefaultSlots);
 
 /// `base + delta` with wrap, so a generator can name a price near either end of

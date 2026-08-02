@@ -22,7 +22,8 @@
       "description": "Unoptimised, assertions live. The default for development.",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CROSSBOOK_BUILD_TESTS": "ON"
+        "CROSSBOOK_BUILD_TESTS": "ON",
+        "CROSSBOOK_BUILD_EXAMPLES": "ON"
       }
     },
     {
@@ -33,7 +34,8 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CROSSBOOK_BUILD_TESTS": "ON",
-        "CROSSBOOK_BUILD_BENCH": "ON"
+        "CROSSBOOK_BUILD_BENCH": "ON",
+        "CROSSBOOK_BUILD_EXAMPLES": "ON"
       }
     },
     {
@@ -57,7 +59,7 @@
       "name": "tsan",
       "inherits": "base",
       "displayName": "ThreadSanitizer",
-      "description": "Data races. Earns its keep once the feed thread lands in v0.2.",
+      "description": "Data races. Nothing in the library is threaded yet, so this earns its keep the day a feed thread lands, not before.",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CROSSBOOK_BUILD_TESTS": "ON",
@@ -79,6 +81,7 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_CXX_COMPILER": "clang++",
         "CROSSBOOK_BUILD_TESTS": "OFF",
+        "CROSSBOOK_BUILD_EXAMPLES": "OFF",
         "CROSSBOOK_BUILD_FUZZ": "ON"
       },
       "condition": {

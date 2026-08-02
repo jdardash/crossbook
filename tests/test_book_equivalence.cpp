@@ -27,8 +27,8 @@ using namespace crossbook;
 
 namespace {
 
-constexpr std::int64_t kI64Max = std::numeric_limits<std::int64_t>::max();
-constexpr std::int64_t kI64Min = std::numeric_limits<std::int64_t>::min();
+constexpr std::int64_t kI64Max = (std::numeric_limits<std::int64_t>::max)();
+constexpr std::int64_t kI64Min = (std::numeric_limits<std::int64_t>::min)();
 
 /// Every observable property of a book, in one comparable value.
 struct Snapshot {

@@ -172,7 +172,7 @@ namespace detail {
 [[nodiscard]] constexpr bool checked_mul_signed(std::int64_t a, std::int64_t b,
                                                 std::int64_t& out) noexcept {
     constexpr auto kMaxMagnitude =
-        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+        static_cast<std::uint64_t>((std::numeric_limits<std::int64_t>::max)());
     const std::uint64_t ua = magnitude_u64(a);
     const std::uint64_t ub = magnitude_u64(b);
     if (ua > kMaxMagnitude || ub > kMaxMagnitude) {
@@ -196,7 +196,7 @@ namespace detail {
     if (b >= 0) {
         return checked_add(a, b, out);
     }
-    if (a < std::numeric_limits<std::int64_t>::min() - b) {
+    if (a < (std::numeric_limits<std::int64_t>::min)() - b) {
         return false;
     }
     out = a + b;
@@ -210,7 +210,7 @@ namespace detail {
 /// into it.
 [[nodiscard]] constexpr bool checked_sub_signed(std::int64_t a, std::int64_t b,
                                                 std::int64_t& out) noexcept {
-    if (b == std::numeric_limits<std::int64_t>::min()) {
+    if (b == (std::numeric_limits<std::int64_t>::min)()) {
         if (a >= 0) {
             return false;  // a + 2^63 does not fit.
         }

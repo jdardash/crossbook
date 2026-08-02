@@ -11,10 +11,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Three compilers, three standard libraries, two operating systems. A book
+  # Three compilers, three standard libraries, three operating systems. A book
   # that reconstructs correctly under one toolchain and not another has
   # undefined behaviour in it, and the whole point of this library is that its
   # output is bit-identical everywhere.
+  #
+  # Debug is not a formality on Windows and macOS. It is where assertions live
+  # and where MSVC's iterator debugging catches an out-of-range index a Release
+  # build reads straight past -- the histogram heap overflow this project
+  # already shipped once was silent in Release.
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -42,9 +47,17 @@ jobs:
             cc: clang
             cxx: clang++
             build_type: Release
+          - name: macos-clang-debug
+            os: macos-latest
+            cc: clang
+            cxx: clang++
+            build_type: Debug
           - name: windows-msvc-release
             os: windows-latest
             build_type: Release
+          - name: windows-msvc-debug
+            os: windows-latest
+            build_type: Debug
 
     steps:
       - uses: actions/checkout@v5
@@ -57,13 +70,273 @@ jobs:
           cmake -S . -B build
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
           -DCROSSBOOK_BUILD_TESTS=ON
+          -DCROSSBOOK_BUILD_EXAMPLES=ON
           -DCROSSBOOK_WERROR=ON
 
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel
 
+      # ctest covers the Catch2 cases and the compilable example; the default
+      # build target above covers the self-containment object library, which
+      # compiles every public header first and alone in a translation unit of
+      # its own.
       - name: Test
         run: ctest --test-dir build --build-config ${{ matrix.build_type }} --output-on-failure
+
+  # The floors the README promises, actually compiled.
+  #
+  # "CMake 3.24+, GCC 11+, Clang 14+" was a claim with nothing behind it: every
+  # other job runs whatever the runner image ships, which is several major
+  # versions above all three, so the first person to try the documented minimum
+  # would have been the one to find out whether it worked. A minimum nobody
+  # compiles is a guess.
+  #
+  # CMake comes from Kitware at an exact version rather than through a
+  # third-party setup action, because the point of this job is that the pinned
+  # thing stays pinned.
+  #
+  # Not covered here: the MSVC 19.30 floor. The hosted Windows images carry the
+  # 14.4x toolset only; v14.30 is a Visual Studio component that is not
+  # installed on them, so there is no honest way to compile 19.30 on a hosted
+  # runner. It is left as an untested claim rather than quietly lowered to
+  # whatever the runner happens to have.
+  floors:
+    name: floor-${{ matrix.name }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gcc-11
+            cc: gcc-11
+            cxx: g++-11
+            packages: g++-11
+          - name: clang-14
+            cc: clang-14
+            cxx: clang++-14
+            packages: clang-14
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install ${{ matrix.name }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.packages }}
+
+      - name: Install CMake 3.24.4 (the documented floor)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o cmake.tar.gz https://github.com/Kitware/CMake/releases/download/v3.24.4/cmake-3.24.4-linux-x86_64.tar.gz
+          tar -xzf cmake.tar.gz
+          echo "$PWD/cmake-3.24.4-linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: Versions actually in use
+        run: |
+          cmake --version
+          ${{ matrix.cxx }} --version
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: >
+          cmake -S . -B build-floor
+          -DCMAKE_BUILD_TYPE=Release
+          -DCROSSBOOK_BUILD_TESTS=ON
+          -DCROSSBOOK_BUILD_EXAMPLES=ON
+          -DCROSSBOOK_WERROR=ON
+
+      - name: Build
+        run: cmake --build build-floor --parallel
+
+      - name: Test
+        run: ctest --test-dir build-floor --output-on-failure
+
+  # Build crossbook the way somebody who does not work on it builds it.
+  #
+  # Every other job in this file configures this repository as the top-level
+  # project, and that is the one configuration in which CROSSBOOK_IS_TOP_LEVEL
+  # is ON -- which is to say, the configuration in which a missing export set, a
+  # missing package config, propagated warning flags and a header that is not
+  # self-contained all fail to show up. The consumer path had no coverage at all.
+  #
+  # The consumer target compiles at -Werror / /WX under its own warning policy,
+  # deliberately over code that is clean at -Wall -Wextra and MSVC /W4 but fatal
+  # under the flags crossbook used to export. If crossbook ever starts pushing
+  # its opinions downstream again this goes red in the consumer's file, which is
+  # exactly where a desk would have seen it.
+  consumer:
+    name: consumer-${{ matrix.mode }}-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        mode: [fetchcontent, findpackage]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      # A prefix somebody else owns, populated the way a package manager would.
+      - name: Install crossbook to a prefix
+        if: matrix.mode == 'findpackage'
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-install -DCMAKE_BUILD_TYPE=Release \
+            -DCROSSBOOK_BUILD_TESTS=OFF -DCROSSBOOK_BUILD_TOOLS=OFF \
+            -DCROSSBOOK_BUILD_EXAMPLES=OFF \
+            -DCMAKE_INSTALL_PREFIX="$PWD/prefix"
+          cmake --build build-install --config Release --target install
+
+      # ARCH_INDEPENDENT is the difference between a header-only package a
+      # differing-sizeof(void*) consumer can use and one CMake rejects for
+      # measuring nothing. The absence of the guard is the assertion.
+      - name: The version file carries no pointer-size guard
+        if: matrix.mode == 'findpackage'
+        run: |
+          set -euo pipefail
+          CVF="$(find prefix -name crossbookConfigVersion.cmake | head -n1)"
+          test -n "$CVF"
+          if grep -q "CMAKE_SIZEOF_VOID_P" "$CVF"; then
+            echo "::error::crossbookConfigVersion.cmake carries a sizeof(void*) guard; ARCH_INDEPENDENT was lost"
+            exit 1
+          fi
+          grep -E '^set\(PACKAGE_VERSION' "$CVF"
+
+      - name: Write a consumer project
+        run: |
+          set -euo pipefail
+          mkdir -p consumer
+          cat > consumer/CMakeLists.txt <<'CONSUMER_CMAKE'
+          cmake_minimum_required(VERSION 3.24)
+          project(crossbook_consumer LANGUAGES CXX)
+
+          set(CMAKE_CXX_STANDARD 20)
+          set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+          if(CROSSBOOK_CONSUMER_MODE STREQUAL "fetchcontent")
+              include(FetchContent)
+              # SOURCE_DIR rather than GIT_REPOSITORY: this job tests the tree in
+              # the checkout, not whatever happens to be on the default branch.
+              FetchContent_Declare(crossbook SOURCE_DIR "${CROSSBOOK_SOURCE_DIR}")
+              FetchContent_MakeAvailable(crossbook)
+
+              # Tests default off in a subproject. That logic is correct and has
+              # never been exercised anywhere, and the way a consumer finds out
+              # it broke is by paying to download Catch2 and build our suite.
+              foreach(leaked crossbook_tests crossbook_selfcontained crossbook_bench Catch2)
+                  if(TARGET ${leaked})
+                      message(FATAL_ERROR
+                          "crossbook built ${leaked} inside a consumer's build tree")
+                  endif()
+              endforeach()
+          else()
+              find_package(crossbook ${CROSSBOOK_REQUIRED_VERSION} CONFIG REQUIRED)
+              message(STATUS "consumer: found crossbook ${crossbook_VERSION}")
+          endif()
+
+          # The direct form of the assertion the compile below makes indirectly.
+          get_target_property(crossbook_opts crossbook::crossbook INTERFACE_COMPILE_OPTIONS)
+          if(crossbook_opts)
+              message(FATAL_ERROR
+                  "crossbook exports compile options onto consumers: ${crossbook_opts}")
+          endif()
+          get_target_property(crossbook_libs crossbook::crossbook INTERFACE_LINK_LIBRARIES)
+          if(crossbook_libs MATCHES "crossbook_warnings")
+              message(FATAL_ERROR
+                  "crossbook still exports crossbook_warnings: ${crossbook_libs}")
+          endif()
+
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE crossbook::crossbook)
+          if(MSVC)
+              target_compile_options(consumer PRIVATE /W4 /WX)
+          else()
+              target_compile_options(consumer PRIVATE -Wall -Wextra -Werror)
+          endif()
+          CONSUMER_CMAKE
+
+          cat > consumer/main.cpp <<'CONSUMER_MAIN'
+          // A consumer's own translation unit, at their warning policy, at
+          // -Werror. Everything here is clean under -Wall -Wextra and MSVC /W4,
+          // and fatal under the flags crossbook used to export transitively.
+
+          #include <cstddef>
+          #include <cstdio>
+
+          #include "crossbook/feed.hpp"
+          #include "crossbook/venues/kraken.hpp"
+
+          // /Zc:__cplusplus was one of the flags pushed onto consumers. MSVC
+          // reports 199711L without it, so a conforming value here means the
+          // flag arrived from somewhere this project did not put it.
+          #if defined(_MSC_VER) && __cplusplus > 199711L
+          #error "crossbook leaked /Zc:__cplusplus onto the consumer"
+          #endif
+
+          // -Wdouble-promotion: float promoted to double. Silent at -Wall -Wextra.
+          static double promoted(float f) { return f * 2.0; }
+
+          // -Wsign-conversion: int converted to unsigned. Silent at -Wall
+          // -Wextra, and under MSVC /W4 (C4365 is off by default).
+          static unsigned mixed(unsigned u, int i) { return u + i; }
+
+          int main() {
+              using namespace crossbook;
+              using KrakenFeed = Feed<venues::KrakenBookDecoder, ArrayBook>;
+              KrakenFeed feed("kraken",
+                              venues::KrakenBookDecoder(InstrumentSpec{"BTC/USD", 1, 8}),
+                              SequencePolicy::kStrictIncrement);
+              const bool ignored =
+                  feed.handle(R"({"channel":"heartbeat"})") == FeedStatus::kIgnored;
+              std::printf("%d %f %u\n", ignored ? 1 : 0, promoted(1.5f), mixed(5u, 3));
+              return ignored ? 0 : 1;
+          }
+          CONSUMER_MAIN
+
+      - name: Configure and build the consumer
+        run: |
+          set -euo pipefail
+          # CMake wants forward slashes; GITHUB_WORKSPACE is backslashed on Windows.
+          ROOT="${GITHUB_WORKSPACE//\\//}"
+          VERSION="$(sed -n 's/^[[:space:]]*VERSION[[:space:]]\{1,\}\([0-9][0-9.]*\).*/\1/p' CMakeLists.txt | head -n1)"
+          test -n "$VERSION"
+          echo "crossbook version under test: $VERSION"
+          cmake -S consumer -B consumer/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCROSSBOOK_CONSUMER_MODE=${{ matrix.mode }} \
+            -DCROSSBOOK_SOURCE_DIR="$ROOT" \
+            -DCROSSBOOK_REQUIRED_VERSION="$VERSION" \
+            -DCMAKE_PREFIX_PATH="$ROOT/prefix"
+          cmake --build consumer/build --config Release --parallel
+
+      - name: Run the consumer
+        run: |
+          set -euo pipefail
+          BIN=consumer/build/consumer
+          [ -x "$BIN" ] || BIN=consumer/build/Release/consumer.exe
+          "$BIN"
+
+  # The README tells a reader to pin a tag. If that tag is not this version the
+  # instruction is wrong in the one place the reader cannot check it: they get a
+  # checkout, it configures, and the headers the next code block uses are simply
+  # not there. Not hypothetical -- the example pinned v0.1.0 while demonstrating
+  # crossbook/feed.hpp and crossbook/venues/kraken.hpp, neither of which exists
+  # at that tag.
+  version:
+    name: version (README tag matches project version)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure with the README check enabled
+        run: >
+          cmake -S . -B build-version
+          -DCROSSBOOK_CHECK_README_VERSION=ON
+          -DCROSSBOOK_BUILD_TESTS=OFF
+          -DCROSSBOOK_BUILD_TOOLS=OFF
+          -DCROSSBOOK_BUILD_EXAMPLES=OFF
 
   # Determinism is a cross-platform claim, so it is checked on every platform
   # rather than asserted in a README.
@@ -169,62 +442,85 @@ jobs:
       - name: Verify against Kraken for one minute
         run: ./build-live/tools/crossbook_verify --venue kraken --symbol BTC/USD --seconds 60 --quiet
 
+  # The asan preset, not a hand copy of it.
+  #
+  # This job used to spell the sanitizer flags out itself, and the two had
+  # already drifted: the preset carries -fno-sanitize-recover=all and the job did
+  # not, so a UBSan finding was printed and execution continued and CI went green
+  # on a diagnostic that stops the build for anyone running `cmake --preset asan`
+  # locally. Duplicated configuration is configuration that is wrong somewhere.
   sanitizers:
-    name: sanitizers (asan+ubsan)
+    name: sanitizers (asan+ubsan, via the asan preset)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Install Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
       - name: Configure
         env:
           CC: clang
           CXX: clang++
-        run: >
-          cmake -S . -B build-asan
-          -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          -DCROSSBOOK_BUILD_TESTS=ON
-          "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer"
-          "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"
+        run: cmake --preset asan
       - name: Build
-        run: cmake --build build-asan --parallel
+        run: cmake --build --preset asan --parallel
       - name: Test
         env:
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: ctest --test-dir build-asan --output-on-failure
+        run: ctest --preset asan
 
   fuzz:
     name: fuzz (smoke)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
+      # A libFuzzer run that starts from an empty corpus spends its whole budget
+      # rediscovering that JSON has braces. Carrying the corpus between runs is
+      # what turns a 45-second smoke run into a regression gate: it has already
+      # seen the structure, so the budget goes on what this change broke.
+      - name: Restore fuzz corpora
+        uses: actions/cache@v4
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-
+
+      - name: Install Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
       - name: Configure
-        env:
-          CC: clang
-          CXX: clang++
-        run: >
-          cmake -S . -B build-fuzz
-          -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          -DCROSSBOOK_BUILD_TESTS=OFF
-          -DCROSSBOOK_BUILD_FUZZ=ON
+        run: cmake --preset fuzz
+
       - name: Build
-        run: cmake --build build-fuzz --parallel
+        run: cmake --build --preset fuzz --parallel
+
+      - name: Corpus directories
+        run: mkdir -p fuzz/corpus/parse_fixed fuzz/corpus/book fuzz/corpus/sequence fuzz/corpus/decode fuzz/corpus/l3 fuzz/corpus/ws_frame
+
       # A short run per target on every PR. This is a regression gate, not a
       # fuzzing campaign: it catches an input class a change has newly broken.
-      # Long campaigns run out of band and their corpora get committed.
+      # Long campaigns run out of band.
       - name: Fuzz parse_fixed
-        run: ./build-fuzz/fuzz/fuzz_parse_fixed -max_total_time=45 -print_final_stats=1
+        run: ./build/fuzz/fuzz/fuzz_parse_fixed fuzz/corpus/parse_fixed -max_total_time=45 -print_final_stats=1
       - name: Fuzz book (differential against std::map)
-        run: ./build-fuzz/fuzz/fuzz_book -max_total_time=60 -print_final_stats=1
+        run: ./build/fuzz/fuzz/fuzz_book fuzz/corpus/book -max_total_time=60 -print_final_stats=1
       - name: Fuzz sequence state machine
-        run: ./build-fuzz/fuzz/fuzz_sequence -max_total_time=45 -print_final_stats=1
+        run: ./build/fuzz/fuzz/fuzz_sequence fuzz/corpus/sequence -max_total_time=45 -print_final_stats=1
       - name: Fuzz JSON scanner and venue decoders
-        run: ./build-fuzz/fuzz/fuzz_decode -max_total_time=90 -print_final_stats=1
+        run: ./build/fuzz/fuzz/fuzz_decode fuzz/corpus/decode -max_total_time=90 -print_final_stats=1
       - name: Fuzz L3 book (differential against a naive model)
-        run: ./build-fuzz/fuzz/fuzz_l3 -max_total_time=90 -print_final_stats=1
+        run: ./build/fuzz/fuzz/fuzz_l3 fuzz/corpus/l3 -max_total_time=90 -print_final_stats=1
       # The frame reader is the only parser here fed bytes that have not been
       # framed by anything we control, so it gets the longest budget.
       - name: Fuzz websocket frame reader
-        run: ./build-fuzz/fuzz/fuzz_ws_frame -max_total_time=90 -print_final_stats=1
+        run: ./build/fuzz/fuzz/fuzz_ws_frame fuzz/corpus/ws_frame -max_total_time=90 -print_final_stats=1
+
       - name: Upload crash artefacts
         if: failure()
         uses: actions/upload-artifact@v4
@@ -235,6 +531,72 @@ jobs:
             leak-*
             timeout-*
           if-no-files-found: ignore
+
+  # bench/ generates the performance table in the README and nothing built it.
+  # A target nobody compiles rots to a compile error while every other job stays
+  # green, and the first person to find out is whoever tries to reproduce a
+  # published number. Compile only: timings from a shared runner are noise, and
+  # publishing noise is worse than publishing nothing.
+  bench:
+    name: bench (compile only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure
+        run: >
+          cmake -S . -B build-bench
+          -DCMAKE_BUILD_TYPE=Release
+          -DCROSSBOOK_BUILD_TESTS=OFF
+          -DCROSSBOOK_BUILD_BENCH=ON
+          -DCROSSBOOK_WERROR=ON
+      - name: Build
+        run: cmake --build build-bench --target crossbook_bench --parallel
+
+  # Formatting, on a pinned formatter.
+  #
+  # An unpinned clang-format is a random red build: the same file passes on
+  # Tuesday and fails on Wednesday because the runner image moved a major
+  # version and the new one lays out a template argument differently. Pinning is
+  # the whole job.
+  #
+  # Scoped to the lines a change touches rather than to whole files. The tree
+  # predates this .clang-format and roughly forty files disagree with it, so a
+  # whole-tree check would be red on arrival -- which is how the previous format
+  # job earned its deletion. Flipping this to whole-tree needs one reformatting
+  # commit first:
+  #     git ls-files '*.hpp' '*.cpp' | xargs clang-format -i
+  # and until somebody does that, enforcing on new lines is the version of this
+  # gate that can fail for a real reason instead of for a historical one.
+  format:
+    name: format (clang-format 18.1.8)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the pinned clang-format
+        run: pip install "clang-format==18.1.8"
+      - name: Check the lines this change touches
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang-format --version
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="$(git rev-parse HEAD^)"
+          fi
+          git diff -U0 --no-color "$BASE" -- '*.hpp' '*.cpp' > changed.diff
+          clang-format-diff -p1 -style=file < changed.diff > format.patch
+          if [ -s format.patch ]; then
+            echo "::error::clang-format disagrees with lines this change touches"
+            cat format.patch
+            exit 1
+          fi
+          echo "clean: every line this change touches is formatted"
 
   # The Contributing section calls both non-negotiable rules "mechanically
   # checked". Rule 2 (no allocation) has a test. Rule 1 (no floating point in

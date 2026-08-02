@@ -465,7 +465,7 @@ TEST_CASE("the mid does not overflow and a non-positive mid is refused",
     // delta keeps every intermediate between the operands. (Before the fix this
     // case was signed overflow — undefined behaviour that in practice wrapped
     // the mid negative and inverted the sign of the answer.)
-    constexpr std::int64_t kMax = std::numeric_limits<std::int64_t>::max();
+    constexpr std::int64_t kMax = (std::numeric_limits<std::int64_t>::max)();
     ConsolidatedBook huge(spec());
     huge.update(quote("v", kMax - 10, kMax - 5, 0));
 

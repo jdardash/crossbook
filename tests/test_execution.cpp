@@ -186,7 +186,7 @@ TEST_CASE("the signed multiply guard catches what the shared one cannot",
     // to change, so the guard is at the call site — and this pins the reason it
     // has to be, rather than leaving a future reader to assume checked_mul is
     // sound everywhere.
-    constexpr std::int64_t kMin = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t kMin = (std::numeric_limits<std::int64_t>::min)();
     std::int64_t out = 0;
 
     // Demonstrated on the safe side of the fault: `5 * -1` is perfectly
@@ -208,7 +208,7 @@ TEST_CASE("the signed multiply guard catches what the shared one cannot",
     CHECK_FALSE(detail::checked_add_signed(kMin, -1, out));
     CHECK_FALSE(detail::checked_sub_signed(1, kMin, out));
     REQUIRE(detail::checked_sub_signed(-1, kMin, out));
-    CHECK(out == std::numeric_limits<std::int64_t>::max());
+    CHECK(out == (std::numeric_limits<std::int64_t>::max)());
 }
 
 TEST_CASE("a wrapping price limit is refused, not silently emptied",

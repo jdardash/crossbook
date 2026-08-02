@@ -31,6 +31,7 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <utility>
 #include <vector>
 
 #include "crossbook/types.hpp"
@@ -389,7 +390,7 @@ public:
     }
 
 private:
-    static constexpr std::size_t kNoDirty = std::numeric_limits<std::size_t>::max();
+    static constexpr std::size_t kNoDirty = (std::numeric_limits<std::size_t>::max)();
 
     /// Where to put the window base so `touch` sits in the middle of it, and so
     /// that [base_, base_ + slots_) stays entirely inside the int64 range.
@@ -423,8 +424,8 @@ private:
     /// base of INT64_MAX-32778 produces the unsigned offset 32784, and unsigned
     /// arithmetic would have accepted the same wrong answer without the UB.
     [[nodiscard]] std::int64_t anchor_for(std::int64_t touch) const noexcept {
-        constexpr std::int64_t kMin = std::numeric_limits<std::int64_t>::min();
-        constexpr std::int64_t kMax = std::numeric_limits<std::int64_t>::max();
+        constexpr std::int64_t kMin = (std::numeric_limits<std::int64_t>::min)();
+        constexpr std::int64_t kMax = (std::numeric_limits<std::int64_t>::max)();
         const auto half = static_cast<std::int64_t>(slots_ / 2);
         // Width of the window minus one, saturated: a degenerate zero-slot side
         // never puts anything in the window, but must not compute a bogus bound.
@@ -795,7 +796,7 @@ public:
     /// an argument that means "give me everything".
     [[nodiscard]] std::size_t top(Side s, std::size_t n, std::vector<Level>& out) const {
         out.clear();
-        out.reserve(std::min(n, side(s).size()));
+        out.reserve((std::min)(n, side(s).size()));
         side(s).for_each([&](const Level& lvl) {
             out.push_back(lvl);
             return out.size() < n;

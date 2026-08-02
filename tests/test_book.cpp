@@ -193,7 +193,7 @@ TEMPLATE_TEST_CASE("top clamps a caller-supplied depth before reserving", "[book
 
     std::vector<Level> out;
     std::size_t got = 0;
-    REQUIRE_NOTHROW(got = book.top(Side::kAsk, std::numeric_limits<std::size_t>::max(), out));
+    REQUIRE_NOTHROW(got = book.top(Side::kAsk, (std::numeric_limits<std::size_t>::max)(), out));
     CHECK(got == 5);
     CHECK(out.size() == 5);
     CHECK(out.front().price == Price{1000});
@@ -202,7 +202,7 @@ TEMPLATE_TEST_CASE("top clamps a caller-supplied depth before reserving", "[book
     // The same on an empty side: reserve(0) is fine, but the clamp must not
     // turn "everything" into "nothing" when there is something.
     std::size_t none = 1;
-    REQUIRE_NOTHROW(none = book.top(Side::kBid, std::numeric_limits<std::size_t>::max(), out));
+    REQUIRE_NOTHROW(none = book.top(Side::kBid, (std::numeric_limits<std::size_t>::max)(), out));
     CHECK(none == 0);
 }
 
@@ -355,7 +355,7 @@ TEST_CASE("clear costs the occupied span, not the whole window", "[book][clear]"
 
     const double clear_only = std::chrono::duration<double>(t1 - t0).count();
     const double clear_plus_full_fill = std::chrono::duration<double>(t2 - t1).count();
-    const double ratio = clear_plus_full_fill / std::max(clear_only, 1e-9);
+    const double ratio = clear_plus_full_fill / (std::max)(clear_only, 1e-9);
 
     CHECK(sink > 0);
     INFO("clear-only " << clear_only << "s, clear+full-fill " << clear_plus_full_fill
