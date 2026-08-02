@@ -179,7 +179,7 @@ inline constexpr std::uint64_t kDefaultMaxFrame = 16ull * 1024ull * 1024ull;
             return FrameStatus::kIncomplete;
         }
         length = 0;
-        for (int i = 0; i < 8; ++i) {
+        for (std::size_t i = 0; i < 8; ++i) {
             length = (length << 8) |
                      static_cast<std::uint64_t>(static_cast<std::uint8_t>(buffer[offset + i]));
         }
@@ -234,9 +234,16 @@ inline void encode_frame(Opcode opcode, std::string_view payload, std::uint32_t 
         }
     }
 
-    std::uint8_t key[4];
-    for (int i = 0; i < 4; ++i) {
-        key[i] = static_cast<std::uint8_t>((mask_key >> ((3 - i) * 8)) & 0xFFu);
+    // Written out rather than computed in a loop: index arithmetic mixing int
+    // and size_t is what broke the GCC build on the length decoder, and there
+    // is nothing to gain from repeating the pattern for four constants.
+    const std::uint8_t key[4] = {
+        static_cast<std::uint8_t>((mask_key >> 24) & 0xFFu),
+        static_cast<std::uint8_t>((mask_key >> 16) & 0xFFu),
+        static_cast<std::uint8_t>((mask_key >> 8) & 0xFFu),
+        static_cast<std::uint8_t>(mask_key & 0xFFu),
+    };
+    for (std::size_t i = 0; i < 4; ++i) {
         out.push_back(static_cast<char>(key[i]));
     }
     for (std::size_t i = 0; i < payload.size(); ++i) {
