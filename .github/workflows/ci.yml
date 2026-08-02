@@ -500,8 +500,17 @@ jobs:
       - name: Build
         run: cmake --build --preset fuzz --parallel
 
+      # Committed seeds mean a cold cache no longer means a cold start: real
+      # venue frames for the parsers, constructed RFC 6455 frames for the frame
+      # reader. The op-stream fuzzers (book, sequence, l3) interpret bytes as
+      # operations and self-discover quickly, so they rely on the cache alone.
       - name: Corpus directories
-        run: mkdir -p fuzz/corpus/parse_fixed fuzz/corpus/book fuzz/corpus/sequence fuzz/corpus/decode fuzz/corpus/l3 fuzz/corpus/ws_frame
+        run: |
+          mkdir -p fuzz/corpus/parse_fixed fuzz/corpus/book fuzz/corpus/sequence fuzz/corpus/decode fuzz/corpus/json fuzz/corpus/l3 fuzz/corpus/ws_frame
+          cp fuzz/seeds/parse_fixed/* fuzz/corpus/parse_fixed/
+          cp fuzz/seeds/decode/* fuzz/corpus/decode/
+          cp fuzz/seeds/json/* fuzz/corpus/json/
+          cp fuzz/seeds/ws_frame/* fuzz/corpus/ws_frame/
 
       # A short run per target on every PR. This is a regression gate, not a
       # fuzzing campaign: it catches an input class a change has newly broken.
@@ -514,6 +523,8 @@ jobs:
         run: ./build/fuzz/fuzz/fuzz_sequence fuzz/corpus/sequence -max_total_time=45 -print_final_stats=1
       - name: Fuzz JSON scanner and venue decoders
         run: ./build/fuzz/fuzz/fuzz_decode fuzz/corpus/decode -max_total_time=90 -print_final_stats=1
+      - name: Fuzz JSON grammar oracle
+        run: ./build/fuzz/fuzz/fuzz_json fuzz/corpus/json -max_total_time=60 -print_final_stats=1
       - name: Fuzz L3 book (differential against a naive model)
         run: ./build/fuzz/fuzz/fuzz_l3 fuzz/corpus/l3 -max_total_time=90 -print_final_stats=1
       # The frame reader is the only parser here fed bytes that have not been

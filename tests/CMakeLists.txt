@@ -34,7 +34,13 @@ add_executable(crossbook_tests
     test_capture.cpp
     test_depth_trim.cpp
     test_fixture_replay.cpp
+    test_live_scales.cpp
 )
+
+# The live-fixture test needs to find the committed capture regardless of the
+# working directory ctest happens to use.
+target_compile_definitions(crossbook_tests PRIVATE
+    CROSSBOOK_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 
 target_link_libraries(crossbook_tests PRIVATE
     crossbook::crossbook

@@ -96,6 +96,20 @@ struct ReplayResult {
     [[nodiscard]] bool kept_pace() const noexcept { return behind_schedule == 0; }
 };
 
+/// Overshoot below this is not lateness.
+///
+/// A spin loop can only observe that a deadline has passed *after* it has
+/// passed, so every wait overshoots by at least the cost of one clock read.
+/// Counting that as falling behind makes the metric report saturation on an
+/// idle machine: a 5ms schedule measured here routinely showed one event
+/// "behind" by 100 NANOSECONDS, which is noise in the deadline check, not a
+/// handler that could not keep up.
+///
+/// One microsecond is comfortably above clock-read cost on every platform in
+/// the CI matrix and three orders of magnitude below any inter-arrival gap
+/// worth pacing, so nothing operationally meaningful hides under it.
+inline constexpr std::uint64_t kDeadlineToleranceNs = 1'000;
+
 namespace detail {
 
 [[nodiscard]] inline std::uint64_t now_ns() noexcept {
@@ -197,11 +211,14 @@ template <typename Handler>
         if (before_wait < scheduled) {
             detail::wait_until(scheduled);
         } else if (options.record_falling_behind && i >= options.warmup_events) {
-            // Already past the deadline: the handler is not keeping up.
-            ++result.behind_schedule;
+            // Past the deadline. Only count it if the overshoot exceeds the
+            // granularity of noticing — see kDeadlineToleranceNs.
             const std::uint64_t lateness = before_wait - scheduled;
-            if (lateness > result.max_lateness) {
-                result.max_lateness = lateness;
+            if (lateness > kDeadlineToleranceNs) {
+                ++result.behind_schedule;
+                if (lateness > result.max_lateness) {
+                    result.max_lateness = lateness;
+                }
             }
         }
 

@@ -29,6 +29,19 @@
 #include <string_view>
 #include <vector>
 
+// Platform headers live HERE, in the tool, not in the library. Pinning a core
+// and raising priority are the difference between measuring a feed handler and
+// measuring the OS scheduler, but they are an application's business: the
+// library stays header-only and free of <windows.h>.
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#elif defined(__linux__)
+#include <pthread.h>
+#include <sched.h>
+#endif
+
 #include "crossbook/capture.hpp"
 #include "crossbook/feed.hpp"
 #include "crossbook/json.hpp"
@@ -67,8 +80,55 @@ struct Options {
     int price_scale{-1};  ///< -1 means infer from the venue's own spelling.
     int qty_scale{-1};
     double speed{0.0};  ///< >0 enables open-loop paced replay at this multiple.
+    int pin_core{-1};   ///< >=0 pins the replay thread to that core.
+    bool realtime{false};
     bool quiet{false};
 };
+
+/// Pin this thread to one core.
+///
+/// Without it the scheduler may migrate the replay mid-run, and the cold caches
+/// on the new core land in the histogram as latency the book never caused.
+/// Returns false when unsupported, so the caller reports the real conditions
+/// rather than silently claiming ones it did not get.
+[[nodiscard]] bool pin_to_core(int core) {
+#if defined(_WIN32)
+    const DWORD_PTR mask = static_cast<DWORD_PTR>(1) << core;
+    return SetThreadAffinityMask(GetCurrentThread(), mask) != 0;
+#elif defined(__linux__)
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    CPU_SET(static_cast<std::size_t>(core), &set);
+    return pthread_setaffinity_np(pthread_self(), sizeof(set), &set) == 0;
+#else
+    (void)core;
+    return false;  // macOS exposes only advisory affinity hints.
+#endif
+}
+
+/// Raise scheduling priority for the measurement.
+///
+/// This does not make the code faster. It reduces the chance that an unrelated
+/// process preempts the replay and drops a multi-millisecond outlier into the
+/// tail — an outlier that is real, but describes the machine rather than the
+/// library.
+[[nodiscard]] bool raise_priority() {
+#if defined(_WIN32)
+    // HIGH rather than REALTIME on purpose: real-time priority on Windows can
+    // starve input handling and the kernel, which is a hostile thing for a
+    // benchmark to do to the machine running it.
+    const bool process_ok = SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS) != 0;
+    const bool thread_ok = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST) != 0;
+    return process_ok && thread_ok;
+#elif defined(__linux__)
+    sched_param param{};
+    param.sched_priority = 10;
+    // Needs CAP_SYS_NICE; failing is normal unprivileged and is reported, not fatal.
+    return sched_setscheduler(0, SCHED_FIFO, &param) == 0;
+#else
+    return false;
+#endif
+}
 
 // ---------------------------------------------------------------------------
 // Scale inference
@@ -450,13 +510,31 @@ int run_replay_with(FeedT& feed, const crossbook::Capture& capture, Options& opt
             events.push_back(ReplayEvent{frame.ts_recv, frame.payload});
         }
 
+        // Report the conditions next to the numbers. A latency figure whose
+        // measurement conditions are unstated is not a measurement, and a
+        // pinning call that silently failed would make the stated conditions a
+        // lie rather than merely absent.
+        std::printf("\nopen-loop replay at %.1fx\n", options.speed);
+        if (options.pin_core >= 0) {
+            std::printf("  core               %s %d\n",
+                        pin_to_core(options.pin_core) ? "pinned to" : "PIN FAILED for",
+                        options.pin_core);
+        } else {
+            std::puts("  core               not pinned (pass --pin N)");
+        }
+        if (options.realtime) {
+            std::printf("  priority           %s\n",
+                        raise_priority() ? "raised" : "RAISE FAILED, normal");
+        } else {
+            std::puts("  priority           normal (pass --realtime)");
+        }
+
         ReplayOptions replay_options;
         replay_options.speed = options.speed;
         const ReplayResult result = replay_open_loop(
             events, [&](const ReplayEvent& event) { (void)feed.handle(event.frame); },
             replay_options);
 
-        std::printf("\nopen-loop replay at %.1fx\n", options.speed);
         std::printf("  events             %llu\n",
                     static_cast<unsigned long long>(result.events));
         std::printf("  kept pace          %s\n", result.kept_pace() ? "yes" : "NO");
@@ -571,6 +649,9 @@ void print_usage() {
         "  --replay <path>    verify a recorded capture instead of connecting\n"
         "  --speed <x>        replay open-loop at x times the recorded rate, and\n"
         "                     report latency percentiles measured against the schedule\n"
+        "  --pin <n>          pin the replay to one CPU core, so migration is not\n"
+        "                     read as latency\n"
+        "  --realtime         raise priority for the measurement\n"
         "  --price-scale <n>  override the inferred price precision\n"
         "  --qty-scale <n>    override the inferred quantity precision\n"
         "  --quiet            suppress the progress line\n"
@@ -615,6 +696,10 @@ int main(int argc, char** argv) {
             options.qty_scale = std::atoi(value("--qty-scale"));
         } else if (arg == "--speed") {
             options.speed = std::atof(value("--speed"));
+        } else if (arg == "--pin") {
+            options.pin_core = std::atoi(value("--pin"));
+        } else if (arg == "--realtime") {
+            options.realtime = true;
         } else if (arg == "--quiet") {
             options.quiet = true;
         } else {
