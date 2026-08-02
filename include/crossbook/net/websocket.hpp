@@ -84,6 +84,15 @@ public:
     /// Send a close frame and drop the connection.
     void close(CloseCode code = CloseCode::kNormal, std::string_view reason = {});
 
+    /// Change the read timeout after connecting. Zero selects busy-poll: poll
+    /// returns kNeedMore immediately instead of sleeping in the kernel, for a
+    /// caller that owns a core and spins. See Transport::set_read_timeout.
+    void set_read_timeout(int timeout_ms);
+
+    /// Kernel arrival time of the newest received data (CLOCK_REALTIME ns),
+    /// 0 where the platform has none. See Transport::last_rx_time_ns.
+    [[nodiscard]] std::int64_t last_rx_time_ns() const noexcept;
+
     [[nodiscard]] bool connected() const noexcept;
     [[nodiscard]] const std::string& last_error() const noexcept { return error_; }
     [[nodiscard]] const Url& url() const noexcept { return url_; }

@@ -262,6 +262,10 @@ public:
 
     void set_read_timeout(int timeout_ms) override { socket_.set_read_timeout(timeout_ms); }
 
+    [[nodiscard]] std::int64_t last_rx_time_ns() const noexcept override {
+        return socket_.last_rx_time_ns();
+    }
+
     void close() override {
         if (have_ctx_) {
             (void)::DeleteSecurityContext(&ctx_);

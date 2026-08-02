@@ -49,6 +49,16 @@ bool WebSocketClient::connected() const noexcept {
     return open_ && transport_ != nullptr && transport_->connected();
 }
 
+void WebSocketClient::set_read_timeout(int timeout_ms) {
+    if (transport_ != nullptr) {
+        transport_->set_read_timeout(timeout_ms);
+    }
+}
+
+std::int64_t WebSocketClient::last_rx_time_ns() const noexcept {
+    return transport_ != nullptr ? transport_->last_rx_time_ns() : 0;
+}
+
 std::uint32_t WebSocketClient::next_mask_key() {
     // mt19937 yields 32 bits per call, which is exactly a masking key.
     return static_cast<std::uint32_t>(rng_());

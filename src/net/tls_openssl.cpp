@@ -3,9 +3,19 @@
 //
 // TLS via OpenSSL — the POSIX backend.
 //
-// Shorter than its Schannel counterpart for one reason: OpenSSL will own the
-// file descriptor and do its own reading, so there is no ciphertext buffer to
-// manage and no SECBUFFER_EXTRA to get wrong.
+// Shorter than its Schannel counterpart for one reason: OpenSSL does its own
+// record buffering, so there is no ciphertext buffer to manage and no
+// SECBUFFER_EXTRA to get wrong.
+//
+// OPENSSL DOES NOT OWN THE FD. Reads and writes go through TcpSocket via a
+// custom BIO, for a concrete reason: the kernel's arrival timestamp for a TCP
+// socket exists only as a control message on the recvmsg that delivers the
+// data (SIOCGSTAMP is unsupported for SOCK_STREAM), so a backend that lets
+// OpenSSL call recv() itself can never report when a message actually hit the
+// machine. The BIO also keeps the busy-poll contract in one place: TcpSocket
+// maps EWOULDBLOCK to kTimeout, the BIO maps kTimeout to a retry flag, and
+// SSL_read surfaces it as WANT_READ exactly as it did with a timed-out
+// blocking read.
 //
 // HOSTNAME VERIFICATION IS EXPLICIT. `SSL_CTX_set_verify` alone validates the
 // chain but not the name, so a certificate legitimately issued for any host at
@@ -44,7 +54,36 @@ namespace {
     return out;
 }
 
+class OpenSslTransport;
+
+/// The BIO glue. `BIO_get_data` carries the transport; the callbacks translate
+/// between IoStatus and the retry-flag protocol OpenSSL expects.
+struct BioGlue {
+    static int read(::BIO* bio, char* buf, int len);
+    static int write(::BIO* bio, const char* buf, int len);
+    static long ctrl(::BIO*, int cmd, long, void*) {
+        // FLUSH must claim success or SSL_write loops; everything else is for
+        // file-ish BIOs and does not apply to a socket.
+        return cmd == BIO_CTRL_FLUSH ? 1 : 0;
+    }
+
+    /// One method table for the process, built on first use.
+    [[nodiscard]] static ::BIO_METHOD* method() {
+        static ::BIO_METHOD* m = [] {
+            ::BIO_METHOD* built =
+                ::BIO_meth_new(BIO_TYPE_SOURCE_SINK | ::BIO_get_new_index(), "crossbook-tcp");
+            (void)::BIO_meth_set_read(built, &BioGlue::read);
+            (void)::BIO_meth_set_write(built, &BioGlue::write);
+            (void)::BIO_meth_set_ctrl(built, &BioGlue::ctrl);
+            return built;
+        }();
+        return m;
+    }
+};
+
 class OpenSslTransport final : public Transport {
+    friend struct BioGlue;
+
 public:
     ~OpenSslTransport() override { close(); }
 
@@ -100,11 +139,16 @@ public:
             return false;
         }
 
-        if (::SSL_set_fd(ssl_, static_cast<int>(socket_.handle())) != 1) {
-            error_ = openssl_error("SSL_set_fd");
+        ::BIO* bio = ::BIO_new(BioGlue::method());
+        if (bio == nullptr) {
+            error_ = openssl_error("BIO_new");
             close();
             return false;
         }
+        ::BIO_set_data(bio, this);
+        ::BIO_set_init(bio, 1);
+        // One BIO for both directions; SSL_set_bio takes ownership.
+        ::SSL_set_bio(ssl_, bio, bio);
 
         const int rc = ::SSL_connect(ssl_);
         if (rc != 1) {
@@ -168,6 +212,10 @@ public:
 
     void set_read_timeout(int timeout_ms) override { socket_.set_read_timeout(timeout_ms); }
 
+    [[nodiscard]] std::int64_t last_rx_time_ns() const noexcept override {
+        return socket_.last_rx_time_ns();
+    }
+
     void close() override {
         if (ssl_ != nullptr) {
             // Best-effort close_notify. A venue that has already gone away makes
@@ -208,7 +256,11 @@ private:
                     return IoStatus::kClosed;  // Clean EOF without close_notify.
                 }
                 connected_ = false;
-                error_ = socket_error_string("SSL_ERROR_SYSCALL");
+                if (error_.empty()) {
+                    // The BIO usually recorded the real failure already; the
+                    // errno-based string is the fallback, not an overwrite.
+                    error_ = socket_error_string("SSL_ERROR_SYSCALL");
+                }
                 return IoStatus::kError;
             default:
                 connected_ = false;
@@ -223,6 +275,46 @@ private:
     std::string error_;
     bool connected_{false};
 };
+
+int BioGlue::read(::BIO* bio, char* buf, int len) {
+    auto* self = static_cast<OpenSslTransport*>(::BIO_get_data(bio));
+    ::BIO_clear_retry_flags(bio);
+    if (self == nullptr || len <= 0) {
+        return -1;
+    }
+    std::size_t got = 0;
+    switch (self->socket_.read(buf, static_cast<std::size_t>(len), got, self->error_)) {
+        case IoStatus::kOk:
+            return static_cast<int>(got);
+        case IoStatus::kTimeout:
+            ::BIO_set_retry_read(bio);
+            return -1;
+        case IoStatus::kClosed:
+            return 0;  // EOF; SSL_read reports ZERO_RETURN or SYSCALL rc==0.
+        case IoStatus::kError:
+            return -1;
+    }
+    return -1;
+}
+
+int BioGlue::write(::BIO* bio, const char* buf, int len) {
+    auto* self = static_cast<OpenSslTransport*>(::BIO_get_data(bio));
+    ::BIO_clear_retry_flags(bio);
+    if (self == nullptr || len <= 0) {
+        return -1;
+    }
+    switch (self->socket_.write(buf, static_cast<std::size_t>(len), self->error_)) {
+        case IoStatus::kOk:
+            return len;  // TcpSocket::write is all-or-fail.
+        case IoStatus::kTimeout:
+            ::BIO_set_retry_write(bio);
+            return -1;
+        case IoStatus::kClosed:
+        case IoStatus::kError:
+            return -1;
+    }
+    return -1;
+}
 
 }  // namespace
 
