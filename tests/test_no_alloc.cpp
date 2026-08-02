@@ -178,6 +178,90 @@ TEST_CASE("ArrayBook updates do not allocate", "[alloc][book]") {
     CHECK(observed == 0);
 }
 
+TEST_CASE("a walking touch does not allocate", "[alloc][book]") {
+    // THE TEST ABOVE PROVED LESS THAN IT LOOKED LIKE.
+    //
+    // It jitters around a FIXED touch, 200 ticks wide, inside a 65536-slot
+    // window. So the book never leaves its initial window, the spill list is
+    // never populated, and rebuild_around_touch() is never entered while the
+    // probe is armed. Every allocation on the update path lived in exactly the
+    // branch that test could not reach: a fresh `std::vector<Level>` with a
+    // reserve() on every rebuild, plus a std::map node for every spilled level.
+    // "No allocation on the hot path, enforced by a test" was true only of a
+    // book whose touch does not move, which is not a book.
+    //
+    // Measured before the fix, BTCUSDT price_scale=2 over 20000 updates:
+    // 12.5 ns/apply and 0 allocations at a 5000-tick live span (the widest
+    // anything benchmarked), 30.6 us/apply and 84 allocations per update at
+    // 40000 ticks, 773 us/apply and 5192 allocations per update at 1000000.
+    //
+    // So: walk the touch by several full windows, keeping a constant-depth book
+    // by deleting from behind, which is what a live feed does over a session.
+    // And assert rebuild_count() actually moved, because a no-allocation test
+    // that never enters the allocating branch is the thing being replaced.
+    constexpr std::int64_t kDepth = 300;
+    constexpr std::int64_t kWarmSteps = 80'000;
+    constexpr std::int64_t kMeasuredSteps = 200'000;  // > 3 windows of drift.
+
+    ArrayBook book(InstrumentSpec{"BTC/USD", 1, 8});
+
+    std::int64_t ask_lo = 5'000'000;   // Asks occupy [ask_lo, ask_lo + kDepth).
+    std::int64_t bid_lo = 20'000'000;  // Bids occupy [bid_lo, bid_lo + kDepth).
+    for (std::int64_t i = 0; i < kDepth; ++i) {
+        book.apply(Side::kAsk, Price{ask_lo + i}, Qty{i + 1});
+        book.apply(Side::kBid, Price{bid_lo + i}, Qty{i + 1});
+    }
+
+    // Asks drift up, bids drift down: both touches leave their window, and the
+    // bid path exercises the descending half of the rebuild's re-ordering.
+    auto step = [&](std::int64_t n) {
+        book.apply(Side::kAsk, Price{ask_lo + kDepth}, Qty{(n % 997) + 1});
+        book.apply(Side::kAsk, Price{ask_lo}, Qty{0});
+        ++ask_lo;
+        book.apply(Side::kBid, Price{bid_lo - 1}, Qty{(n % 991) + 1});
+        book.apply(Side::kBid, Price{bid_lo + kDepth - 1}, Qty{0});
+        --bid_lo;
+    };
+
+    // Warm-up outside the guard. The scratch buffers are sized once for a book
+    // of this depth and reused after that; steady state is what the claim is
+    // about, exactly as for the fixed-touch test above.
+    for (std::int64_t n = 0; n < kWarmSteps; ++n) {
+        step(n);
+    }
+    const std::uint64_t ask_rebuilds_before = book.asks().rebuild_count();
+    const std::uint64_t bid_rebuilds_before = book.bids().rebuild_count();
+    REQUIRE(ask_rebuilds_before > 0);  // The warm-up must have re-anchored.
+
+    std::uint64_t observed = 0;
+    {
+        alloc_probe::Guard guard;
+        for (std::int64_t n = 0; n < kMeasuredSteps; ++n) {
+            step(n);
+        }
+        observed = alloc_probe::Guard::count();
+    }
+
+    CHECK(observed == 0);
+
+    // The probe only means something if the guarded region entered the branch
+    // it is aimed at. Several re-anchors per side, on both the spill path and
+    // the rebuild path.
+    CHECK(book.asks().rebuild_count() > ask_rebuilds_before + 2);
+    CHECK(book.bids().rebuild_count() > bid_rebuilds_before + 2);
+
+    // And the book that came out the other side is still the right book: a
+    // constant-depth ladder whose touch has moved by the full drift.
+    CHECK_FALSE(book.asks().degraded());
+    CHECK(book.asks().size() == static_cast<std::size_t>(kDepth));
+    CHECK(book.bids().size() == static_cast<std::size_t>(kDepth));
+    Level lvl{};
+    REQUIRE(book.best(Side::kAsk, lvl));
+    CHECK(lvl.price == Price{ask_lo});
+    REQUIRE(book.best(Side::kBid, lvl));
+    CHECK(lvl.price == Price{bid_lo + kDepth - 1});
+}
+
 TEST_CASE("checksum computation does not allocate", "[alloc][checksum]") {
     // This is why the verifier can run on every update rather than being
     // sampled: mantissa digits go into a stack buffer and straight into the
