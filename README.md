@@ -82,6 +82,83 @@ Divergences are never summarised away. Every mismatch is
 [recorded with a cause](include/crossbook/divergence.hpp), because a match rate
 without an enumerated remainder isn't evidence.
 
+## The measurement
+
+`crossbook_verify` connects to Kraken, rebuilds the book, and recomputes the
+exchange's CRC32 over local state on every update. No API key, no account.
+
+```bash
+cmake --preset release && cmake --build build/release
+./build/release/tools/crossbook_verify --venue kraken --symbol BTC/USD --seconds 180
+```
+
+A three-minute run on BTC/USD, 2026-08-01:
+
+```text
+frames               2939
+  applied            2759
+checksums verified   2759
+checksum mismatches  0
+match rate           100.000000%  (2759 of 2759)
+state hash           7648057f6909c67a
+```
+
+The exit status is the point: any mismatch, any decode failure, any resync and it
+exits non-zero.
+
+**And you can check this without taking my word for it.** A recorded minute of
+that feed is committed at [`tests/fixtures/kraken_btcusd_l2.cbcap`](tests/fixtures/) — 72 KB
+of verbatim Kraken bytes — and replays offline, deterministically, on every
+platform:
+
+```bash
+./build/release/tools/crossbook_verify --replay tests/fixtures/kraken_btcusd_l2.cbcap
+# 301 of 301 checksums matched, state hash 080281c2dd87183f
+```
+
+CI runs exactly that on Linux, macOS and Windows on every push, and asserts the
+state hash is bit-identical across all three. That is why the number above is a
+regression test rather than an anecdote. In equities the equivalent data is
+licensed and cannot be redistributed, which is why every public ITCH order book
+repository ships without runnable data and asks to be believed.
+
+Recording your own is one command, and works for Binance too:
+
+```bash
+./build/release/tools/crossbook_capture --venue kraken --symbol ETH/USD \
+    --seconds 60 --out eth.cbcap
+./build/release/tools/crossbook_verify --replay eth.cbcap
+```
+
+`crossbook_capture` deliberately does not decode anything. Recording and
+interpreting are separate jobs, and keeping them separate is what makes a
+capture evidence rather than output: change the book implementation and the
+capture is still the bytes the exchange sent, so the new implementation can be
+held to them.
+
+### Live verification found a real bug
+
+Worth stating plainly, because it is the reason the verifier exists.
+
+The first live run reported **98.66%** — 4 of 298 updates mismatched — and the
+book held 20 bid levels for a subscription that asked for 10.
+
+The cause is a gap in the depth-limited contract that unit tests do not reach.
+Kraken reports cancellations, so a reader that handles those looks correct. It
+never reports that a level fell out of the top ten because a *better* level
+arrived — from the venue's side there is nothing to say. Those orphaned levels
+sit below the checksummed depth doing no harm, until enough removals near the
+touch promote one back into view, and then the checksum fails on an update that
+was itself perfectly fine. The divergence is minutes away from its cause.
+
+The fix is [`BasicL2Book::trim`](include/crossbook/book.hpp), and the reason it
+is trustworthy is the same reason the bug was found: replaying the committed
+capture with trimming disabled still fails, and
+[a test asserts that it does](tests/test_fixture_replay.cpp).
+
+No amount of testing the book against itself would have surfaced this. The
+exchange's checksum did, in sixty seconds.
+
 ## Performance
 
 Measured, with the methodology stated, because a number without one is noise.
@@ -250,14 +327,37 @@ for (std::string_view frame : frames_from_your_transport) {
       id lookup, and queue position
 - [x] `executable_size` and `cost_to_trade` — what you can actually trade
 - [x] Consolidated cross-venue book: fee-adjusted, staleness-filtered
-- [x] 196 test cases / 70k assertions, `-Werror`, ASan + UBSan, six fuzz targets
-- [ ] Websocket transport — **deliberately not built.** Bring your own frames.
+- [x] Websocket transport: RFC 6455 framing, TLS via Schannel and OpenSSL
+- [x] Depth-limited book trimming — found by live verification, not by a test
+- [x] Capture and byte-exact offline replay, with a recorded capture committed
+- [x] `-Werror`, ASan + UBSan, and a differential fuzzer per subsystem
+- [ ] Automatic Binance REST snapshot reconciliation in the tool (v0.3)
 
-The library decodes, verifies, recovers, and prices execution; it does not open
-sockets. That boundary is a choice, not an omission: TLS would end the
-zero-dependency property that makes a header-only library adoptable, and socket
-plumbing is both the least interesting part and the part every adopter already
-has. Hand it frames from whatever transport you like.
+The correctness core still decodes, verifies, and recovers without opening a
+socket: the transport is a separate, optional target, and consuming
+`crossbook::crossbook` pulls in no TLS stack. `-DCROSSBOOK_BUILD_TOOLS=OFF`
+drops it entirely. That boundary is what keeps the core testable offline —
+which is also how the whole stack gets tested, since CI verifies a recorded
+capture rather than a live venue.
+
+### Dependencies, and the deliberate lack of them
+
+The library has none: standard library only. The JSON reader, the RFC 6455
+codec, SHA-1 and base64 are written here rather than pulled in, and two of those
+are load-bearing rather than stylistic.
+
+The JSON reader returns the **untouched wire token** for every value, because
+Kraken's checksum is computed over the digits as the venue spelled them — a
+parser that hands back a `double` has already destroyed the information needed
+to verify the book. And SHA-1 is here so that `Sec-WebSocket-Accept` is actually
+*verified* rather than assumed; that check is what proves the peer parsed the
+upgrade request rather than merely answering 101, and it is the step most
+hand-rolled clients skip.
+
+TLS is the one thing that cannot reasonably be written here, so each platform's
+own is used: Schannel on Windows, which ships with the OS, and OpenSSL
+elsewhere. `cmake --build` therefore produces a working client on a stock
+Windows machine with nothing installed.
 
 ## What you can actually trade
 
@@ -306,6 +406,7 @@ explicit instead of burying it:
 - **Staleness excludes.** A quiet venue looks exactly like a stable one. Entries
   past a configured age are dropped rather than quoted.
 - **Local clocks only.** Venue timestamps are never compared to each other.
+
 
 ## What this is not
 

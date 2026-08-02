@@ -77,6 +77,10 @@ struct FeedStats {
     std::uint64_t snapshots_applied{0};
     std::uint64_t checksums_verified{0};
     std::uint64_t checksum_mismatches{0};
+    /// Levels dropped for falling outside a depth-limited subscription. A
+    /// steady trickle is normal and expected; zero on a depth-limited feed
+    /// means the depth was never configured, which is worth being able to see.
+    std::uint64_t levels_trimmed{0};
 };
 
 /// Drives one instrument on one venue.
@@ -86,16 +90,24 @@ struct FeedStats {
 template <typename Decoder, typename BookT = ArrayBook>
 class Feed {
 public:
-    Feed(std::string venue, Decoder decoder, SequencePolicy policy)
+    /// `depth` is the number of levels the subscription covers, or 0 for a full
+    /// book. It is not cosmetic: a depth-limited venue never tells you that a
+    /// level fell out of the window, so a feed that does not trim accumulates
+    /// levels the venue stopped tracking and eventually fails its checksums.
+    /// See `BasicL2Book::trim` for the measurement.
+    Feed(std::string venue, Decoder decoder, SequencePolicy policy, std::size_t depth = 0)
         : venue_(std::move(venue)),
           decoder_(std::move(decoder)),
           book_(decoder_.spec()),
-          tracker_(policy) {}
+          tracker_(policy),
+          depth_(depth) {}
 
     [[nodiscard]] const BookT& book() const noexcept { return book_; }
     [[nodiscard]] const DivergenceLog& divergences() const noexcept { return log_; }
     [[nodiscard]] const SequenceTracker& sequence() const noexcept { return tracker_; }
     [[nodiscard]] const FeedStats& stats() const noexcept { return stats_; }
+    /// Levels per side this subscription covers; 0 for a full book.
+    [[nodiscard]] std::size_t depth() const noexcept { return depth_; }
     [[nodiscard]] Decoder& decoder() noexcept { return decoder_; }
 
     /// True when the book reflects the venue and may be read.
@@ -199,6 +211,7 @@ private:
         for (const LevelUpdate& lvl : msg.levels) {
             book_.apply(lvl.side, lvl.price, lvl.qty);
         }
+        stats_.levels_trimmed += book_.trim(depth_);
         book_.set_last_update(msg.ts);
         last_ts_ = msg.ts;
 
@@ -244,6 +257,10 @@ private:
         for (const LevelUpdate& lvl : msg.levels) {
             book_.apply(lvl.side, lvl.price, lvl.qty);
         }
+        // Trim BEFORE verifying. The checksum covers the top ten levels, so a
+        // stale level that has re-entered the top ten is exactly what the
+        // checksum is about to catch - and exactly what trimming prevents.
+        stats_.levels_trimmed += book_.trim(depth_);
         book_.set_last_update(msg.ts);
         last_ts_ = msg.ts;
         ++stats_.applied;
@@ -284,6 +301,7 @@ private:
     Decoder decoder_;
     BookT book_;
     SequenceTracker tracker_;
+    std::size_t depth_{0};
     DivergenceLog log_;
     FeedStats stats_{};
     Timestamp last_ts_{0};

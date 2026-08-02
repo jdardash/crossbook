@@ -1,0 +1,755 @@
+CBCAP1 kraken BTC/USD 1785552832693693000
+201603688723400 139
+{"channel":"status","type":"update","data":[{"version":"2.0.10","system":"online","api_version":"v2","connection_id":7204881492680171915}]}
+201603845874000 192
+{"method":"subscribe","result":{"channel":"book","depth":10,"snapshot":true,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:53:53.184174Z","time_out":"2026-08-01T02:53:53.184216Z"}
+201604073826100 848
+{"channel":"book","type":"snapshot","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.01876947},{"price":63003.3,"qty":0.00005100},{"price":63002.6,"qty":0.01602600},{"price":63000.2,"qty":0.00005100},{"price":63000.0,"qty":0.08325683},{"price":62997.0,"qty":0.09705100},{"price":62993.9,"qty":0.00005100},{"price":62991.8,"qty":0.00158700},{"price":62991.6,"qty":0.11000000},{"price":62988.9,"qty":0.10000000}],"asks":[{"price":63005.0,"qty":2.07265551},{"price":63005.1,"qty":0.55006860},{"price":63005.2,"qty":0.79358539},{"price":63005.8,"qty":0.01537966},{"price":63005.9,"qty":0.11835139},{"price":63006.0,"qty":0.04761452},{"price":63006.3,"qty":0.23809955},{"price":63006.5,"qty":0.79356896},{"price":63007.3,"qty":0.06000000},{"price":63008.4,"qty":0.00057100}],"checksum":2531248887,"timestamp":"2026-08-01T02:53:53.398143Z"}]}
+201604243794700 23
+{"channel":"heartbeat"}
+201604311454200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":2.08665551}],"checksum":2532652056,"timestamp":"2026-08-01T02:53:53.646219Z"}]}
+201605244717700 23
+{"channel":"heartbeat"}
+201605634741500 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.9,"qty":0.00000000},{"price":63008.6,"qty":0.00039677}],"checksum":3629011692,"timestamp":"2026-08-01T02:53:54.966086Z"}]}
+201605805105100 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.4,"qty":0.00000000},{"price":63009.2,"qty":0.28207838}],"checksum":1024595226,"timestamp":"2026-08-01T02:53:55.137815Z"}]}
+201605885769300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":2.14864105}],"checksum":1198578833,"timestamp":"2026-08-01T02:53:55.223312Z"}]}
+201605907216500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":2.13464105}],"checksum":2220311411,"timestamp":"2026-08-01T02:53:55.229516Z"}]}
+201606248087800 23
+{"channel":"heartbeat"}
+201606660192100 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":2.07265551}],"checksum":1027140597,"timestamp":"2026-08-01T02:53:55.995316Z"}]}
+201606664030600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":2.08365551}],"checksum":3353100845,"timestamp":"2026-08-01T02:53:55.999884Z"}]}
+201606699045900 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.1,"qty":1.59719228}],"checksum":1137225339,"timestamp":"2026-08-01T02:53:56.035270Z"}]}
+201606700077000 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.0,"qty":0.75950313}],"checksum":417164630,"timestamp":"2026-08-01T02:53:56.038299Z"}]}
+201606846108200 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.0,"qty":0.00000000},{"price":63009.3,"qty":0.79353387}],"checksum":3520428661,"timestamp":"2026-08-01T02:53:56.182977Z"}]}
+201606849194700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.2,"qty":0.28274124}],"checksum":2292810938,"timestamp":"2026-08-01T02:53:56.185650Z"}]}
+201606907376800 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":2.14941515}],"checksum":260883061,"timestamp":"2026-08-01T02:53:56.239993Z"}]}
+201607007370300 178
+{"method":"unsubscribe","result":{"channel":"book","depth":10,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:53:56.345070Z","time_out":"2026-08-01T02:53:56.345138Z"}
+201607007454100 192
+{"method":"subscribe","result":{"channel":"book","depth":10,"snapshot":true,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:53:56.345169Z","time_out":"2026-08-01T02:53:56.345206Z"}
+201607009205600 178
+{"method":"unsubscribe","result":{"channel":"book","depth":10,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:53:56.348069Z","time_out":"2026-08-01T02:53:56.348087Z"}
+201607009220000 192
+{"method":"subscribe","result":{"channel":"book","depth":10,"snapshot":true,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:53:56.348110Z","time_out":"2026-08-01T02:53:56.348120Z"}
+201607064056100 178
+{"method":"unsubscribe","result":{"channel":"book","depth":10,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:53:56.400288Z","time_out":"2026-08-01T02:53:56.400341Z"}
+201607064075900 192
+{"method":"subscribe","result":{"channel":"book","depth":10,"snapshot":true,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:53:56.400365Z","time_out":"2026-08-01T02:53:56.400380Z"}
+201607077299100 847
+{"channel":"book","type":"snapshot","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.01876947},{"price":63003.3,"qty":0.00005100},{"price":63002.6,"qty":0.01602600},{"price":63000.2,"qty":0.00005100},{"price":63000.0,"qty":0.08325683},{"price":62997.0,"qty":0.09705100},{"price":62993.9,"qty":0.00005100},{"price":62991.8,"qty":0.00158700},{"price":62991.6,"qty":0.11000000},{"price":62988.9,"qty":0.10000000}],"asks":[{"price":63005.0,"qty":2.14941515},{"price":63005.1,"qty":0.55006860},{"price":63005.2,"qty":0.79358539},{"price":63005.8,"qty":0.01537966},{"price":63006.0,"qty":0.04761452},{"price":63006.3,"qty":0.23809955},{"price":63006.5,"qty":0.79356896},{"price":63007.3,"qty":0.06000000},{"price":63008.6,"qty":0.00039677},{"price":63009.2,"qty":0.28274124}],"checksum":260883061,"timestamp":"2026-08-01T02:53:56.333369Z"}]}
+201607250090500 23
+{"channel":"heartbeat"}
+201607433567000 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":2.13841515}],"checksum":289505324,"timestamp":"2026-08-01T02:53:56.768904Z"}]}
+201608259876200 23
+{"channel":"heartbeat"}
+201609245917300 23
+{"channel":"heartbeat"}
+201609530169100 321
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":2.00825935},{"price":63005.0,"qty":1.99103002},{"price":63005.0,"qty":1.98023002},{"price":63005.0,"qty":1.94923002},{"price":63005.0,"qty":1.56873940}],"checksum":345451028,"timestamp":"2026-08-01T02:53:58.864981Z"}]}
+201609540323000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.76873940}],"checksum":1155370259,"timestamp":"2026-08-01T02:53:58.878162Z"}]}
+201609856071500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63006.4,"qty":0.00005100}],"checksum":3433440525,"timestamp":"2026-08-01T02:53:59.194104Z"}]}
+201610246827000 23
+{"channel":"heartbeat"}
+201610539676800 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.77413940}],"checksum":416465274,"timestamp":"2026-08-01T02:53:59.877632Z"}]}
+201610542228600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.79164563}],"checksum":1930811526,"timestamp":"2026-08-01T02:53:59.879157Z"}]}
+201610542268800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.82264563}],"checksum":3595722396,"timestamp":"2026-08-01T02:53:59.880024Z"}]}
+201610914571600 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63006.4,"qty":0.00000000},{"price":63009.2,"qty":0.28274124}],"checksum":2486653344,"timestamp":"2026-08-01T02:54:00.248314Z"}]}
+201611248201500 23
+{"channel":"heartbeat"}
+201612006221900 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.1,"qty":1.58751728}],"checksum":1320185132,"timestamp":"2026-08-01T02:54:01.341944Z"}]}
+201612018041200 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.0,"qty":0.00222061}],"checksum":719933159,"timestamp":"2026-08-01T02:54:01.346006Z"}]}
+201612018118500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.0,"qty":0.75905326}],"checksum":3903675794,"timestamp":"2026-08-01T02:54:01.346140Z"}]}
+201612023764500 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.0,"qty":0.75683265},{"price":63008.9,"qty":0.00222061}],"checksum":1409115271,"timestamp":"2026-08-01T02:54:01.361600Z"}]}
+201612261878500 23
+{"channel":"heartbeat"}
+201612359250800 216
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.9,"qty":0.00000000},{"price":63009.2,"qty":0.28229589}],"checksum":698939138,"timestamp":"2026-08-01T02:54:01.695421Z"}]}
+201612522242800 178
+{"method":"unsubscribe","result":{"channel":"book","depth":10,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:54:01.858278Z","time_out":"2026-08-01T02:54:01.858360Z"}
+201612522261700 192
+{"method":"subscribe","result":{"channel":"book","depth":10,"snapshot":true,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:54:01.858392Z","time_out":"2026-08-01T02:54:01.858411Z"}
+201612577765300 847
+{"channel":"book","type":"snapshot","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.01876947},{"price":63003.3,"qty":0.00005100},{"price":63002.6,"qty":0.01602600},{"price":63000.2,"qty":0.00005100},{"price":63000.0,"qty":0.08325683},{"price":62997.0,"qty":0.09705100},{"price":62993.9,"qty":0.00005100},{"price":62991.8,"qty":0.00158700},{"price":62991.6,"qty":0.11000000},{"price":62988.9,"qty":0.10000000}],"asks":[{"price":63005.0,"qty":1.82264563},{"price":63005.1,"qty":0.55006860},{"price":63005.2,"qty":0.79358539},{"price":63005.8,"qty":0.01537966},{"price":63006.0,"qty":0.04761452},{"price":63006.3,"qty":0.23809955},{"price":63006.5,"qty":0.79356896},{"price":63007.3,"qty":0.06000000},{"price":63008.6,"qty":0.00039677},{"price":63009.2,"qty":0.28229589}],"checksum":698939138,"timestamp":"2026-08-01T02:54:01.878547Z"}]}
+201613247631400 23
+{"channel":"heartbeat"}
+201614251972400 23
+{"channel":"heartbeat"}
+201614760660600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.83364563}],"checksum":3877632203,"timestamp":"2026-08-01T02:54:04.095805Z"}]}
+201615245797100 23
+{"channel":"heartbeat"}
+201615535086500 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.82264563}],"checksum":698939138,"timestamp":"2026-08-01T02:54:04.865969Z"}]}
+201616144146200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.83564563}],"checksum":4249132846,"timestamp":"2026-08-01T02:54:05.476651Z"}]}
+201616252092700 23
+{"channel":"heartbeat"}
+201617252332200 23
+{"channel":"heartbeat"}
+201617940370600 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.82264563}],"checksum":698939138,"timestamp":"2026-08-01T02:54:07.274467Z"}]}
+201618250711000 23
+{"channel":"heartbeat"}
+201618635064000 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.83664563}],"checksum":500281340,"timestamp":"2026-08-01T02:54:07.972733Z"}]}
+201619251201000 23
+{"channel":"heartbeat"}
+201620249080700 23
+{"channel":"heartbeat"}
+201621248474000 23
+{"channel":"heartbeat"}
+201621402329800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.1,"qty":1.59719228}],"checksum":3834081175,"timestamp":"2026-08-01T02:54:10.739020Z"}]}
+201621404351100 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.0,"qty":0.75972064}],"checksum":3477015596,"timestamp":"2026-08-01T02:54:10.742008Z"}]}
+201621405522200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.0,"qty":0.76194125}],"checksum":2103554156,"timestamp":"2026-08-01T02:54:10.743024Z"}]}
+201621409062400 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.0,"qty":0.75972064},{"price":63008.9,"qty":0.00222061}],"checksum":1698778649,"timestamp":"2026-08-01T02:54:10.746690Z"}]}
+201621557225800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.9,"qty":1.59941289}],"checksum":1597011515,"timestamp":"2026-08-01T02:54:10.892399Z"}]}
+201621570702000 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.8,"qty":0.75972064}],"checksum":329086662,"timestamp":"2026-08-01T02:54:10.895749Z"}]}
+201621570755400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.5,"qty":0.00222061}],"checksum":2347406755,"timestamp":"2026-08-01T02:54:10.896139Z"}]}
+201621710145600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.6,"qty":0.75945456}],"checksum":4090867410,"timestamp":"2026-08-01T02:54:11.046351Z"}]}
+201621818888600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.83625276}],"checksum":1206212079,"timestamp":"2026-08-01T02:54:11.150706Z"}]}
+201622147012300 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.6,"qty":0.00039677}],"checksum":360982297,"timestamp":"2026-08-01T02:54:11.484229Z"}]}
+201622212095500 216
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.5,"qty":0.00000000},{"price":63009.2,"qty":0.28229589}],"checksum":647275776,"timestamp":"2026-08-01T02:54:11.548887Z"}]}
+201622257172300 23
+{"channel":"heartbeat"}
+201622341065100 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62992.1,"qty":0.05120000}],"asks":[],"checksum":2427351873,"timestamp":"2026-08-01T02:54:11.677289Z"}]}
+201622376424900 178
+{"method":"unsubscribe","result":{"channel":"book","depth":10,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:54:11.713489Z","time_out":"2026-08-01T02:54:11.713552Z"}
+201622376445400 192
+{"method":"subscribe","result":{"channel":"book","depth":10,"snapshot":true,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:54:11.713592Z","time_out":"2026-08-01T02:54:11.713607Z"}
+201622498820600 178
+{"method":"unsubscribe","result":{"channel":"book","depth":10,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:54:11.835545Z","time_out":"2026-08-01T02:54:11.835590Z"}
+201622501515100 192
+{"method":"subscribe","result":{"channel":"book","depth":10,"snapshot":true,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:54:11.840139Z","time_out":"2026-08-01T02:54:11.840161Z"}
+201622578878700 848
+{"channel":"book","type":"snapshot","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.01876947},{"price":63003.3,"qty":0.00005100},{"price":63002.6,"qty":0.01602600},{"price":63000.2,"qty":0.00005100},{"price":63000.0,"qty":0.08325683},{"price":62997.0,"qty":0.09705100},{"price":62993.9,"qty":0.00005100},{"price":62992.1,"qty":0.05120000},{"price":62991.8,"qty":0.00158700},{"price":62991.6,"qty":0.11000000}],"asks":[{"price":63005.0,"qty":1.83625276},{"price":63005.1,"qty":0.55006860},{"price":63005.2,"qty":0.79358539},{"price":63005.8,"qty":0.01537966},{"price":63006.0,"qty":0.04761452},{"price":63006.3,"qty":0.23809955},{"price":63006.5,"qty":0.79356896},{"price":63007.3,"qty":0.06000000},{"price":63008.6,"qty":0.00039677},{"price":63009.2,"qty":0.28229589}],"checksum":2427351873,"timestamp":"2026-08-01T02:54:11.887849Z"}]}
+201623253752100 23
+{"channel":"heartbeat"}
+201623507806200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.82225276}],"checksum":2268033320,"timestamp":"2026-08-01T02:54:12.842887Z"}]}
+201624259106400 23
+{"channel":"heartbeat"}
+201624447112200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.83225276}],"checksum":1853055833,"timestamp":"2026-08-01T02:54:13.783882Z"}]}
+201624614527800 216
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62992.1,"qty":0.00000000},{"price":62988.9,"qty":0.10000000}],"asks":[],"checksum":889643078,"timestamp":"2026-08-01T02:54:13.952506Z"}]}
+201625251738600 23
+{"channel":"heartbeat"}
+201626100606500 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.82225276}],"checksum":317586942,"timestamp":"2026-08-01T02:54:15.435253Z"}]}
+201626255797000 23
+{"channel":"heartbeat"}
+201627016291600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62992.1,"qty":0.05120000}],"asks":[],"checksum":2268033320,"timestamp":"2026-08-01T02:54:16.353057Z"}]}
+201627249434000 23
+{"channel":"heartbeat"}
+201628250516500 23
+{"channel":"heartbeat"}
+201628458259000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.4,"qty":0.00057100}],"checksum":1823831923,"timestamp":"2026-08-01T02:54:17.790439Z"}]}
+201629249881300 23
+{"channel":"heartbeat"}
+201630250219500 23
+{"channel":"heartbeat"}
+201631064714900 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.01718794},{"price":63004.9,"qty":0.01661321}],"asks":[],"checksum":3104198434,"timestamp":"2026-08-01T02:54:20.399506Z"}]}
+201631249610300 23
+{"channel":"heartbeat"}
+201632259699800 23
+{"channel":"heartbeat"}
+201632608528000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.83425276}],"checksum":1185905513,"timestamp":"2026-08-01T02:54:21.944156Z"}]}
+201633270721300 23
+{"channel":"heartbeat"}
+201633401434200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.82225276}],"checksum":3104198434,"timestamp":"2026-08-01T02:54:22.737428Z"}]}
+201634250668300 23
+{"channel":"heartbeat"}
+201635252530100 23
+{"channel":"heartbeat"}
+201636257073600 23
+{"channel":"heartbeat"}
+201636500866100 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.83225276}],"checksum":2521752545,"timestamp":"2026-08-01T02:54:25.838947Z"}]}
+201637256575400 23
+{"channel":"heartbeat"}
+201637424088800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.82225276}],"checksum":3104198434,"timestamp":"2026-08-01T02:54:26.761399Z"}]}
+201637842415300 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.82298144}],"checksum":915051891,"timestamp":"2026-08-01T02:54:27.179286Z"}]}
+201638233173800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.83398144}],"checksum":1041399180,"timestamp":"2026-08-01T02:54:27.569033Z"}]}
+201638255810900 23
+{"channel":"heartbeat"}
+201638771753100 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.4,"qty":0.00000000},{"price":63009.2,"qty":0.28229589}],"checksum":1993390488,"timestamp":"2026-08-01T02:54:28.108746Z"}]}
+201639253274800 23
+{"channel":"heartbeat"}
+201639910269600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.82298144}],"checksum":2688282607,"timestamp":"2026-08-01T02:54:29.245200Z"}]}
+201640252186500 23
+{"channel":"heartbeat"}
+201640674737500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.83498144}],"checksum":3369362826,"timestamp":"2026-08-01T02:54:30.012117Z"}]}
+201640868488900 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62992.1,"qty":0.00000000},{"price":62988.0,"qty":0.04762812}],"asks":[],"checksum":2528703015,"timestamp":"2026-08-01T02:54:30.203446Z"}]}
+201641026192300 178
+{"method":"unsubscribe","result":{"channel":"book","depth":10,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:54:30.363513Z","time_out":"2026-08-01T02:54:30.363587Z"}
+201641026273700 192
+{"method":"subscribe","result":{"channel":"book","depth":10,"snapshot":true,"symbol":"BTC/USD"},"success":true,"time_in":"2026-08-01T02:54:30.363620Z","time_out":"2026-08-01T02:54:30.363642Z"}
+201641104175900 848
+{"channel":"book","type":"snapshot","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.01661321},{"price":63003.3,"qty":0.00005100},{"price":63002.6,"qty":0.01602600},{"price":63000.2,"qty":0.00005100},{"price":63000.0,"qty":0.08325683},{"price":62997.0,"qty":0.09705100},{"price":62993.9,"qty":0.00005100},{"price":62991.8,"qty":0.00158700},{"price":62991.6,"qty":0.11000000},{"price":62988.0,"qty":0.04762812}],"asks":[{"price":63005.0,"qty":1.83498144},{"price":63005.1,"qty":0.55006860},{"price":63005.2,"qty":0.79358539},{"price":63005.8,"qty":0.01537966},{"price":63006.0,"qty":0.04761452},{"price":63006.3,"qty":0.23809955},{"price":63006.5,"qty":0.79356896},{"price":63007.3,"qty":0.06000000},{"price":63008.6,"qty":0.00039677},{"price":63009.2,"qty":0.28229589}],"checksum":2528703015,"timestamp":"2026-08-01T02:54:30.381376Z"}]}
+201641255899000 23
+{"channel":"heartbeat"}
+201641455847000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.82298144}],"checksum":4267145282,"timestamp":"2026-08-01T02:54:30.793859Z"}]}
+201641624105100 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.80547521}],"checksum":194517830,"timestamp":"2026-08-01T02:54:30.958228Z"}]}
+201641685211500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63006.4,"qty":0.00005100}],"checksum":1820162136,"timestamp":"2026-08-01T02:54:31.021934Z"}]}
+201642260822800 23
+{"channel":"heartbeat"}
+201642853831700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.82367769}],"checksum":1644358878,"timestamp":"2026-08-01T02:54:32.188848Z"}]}
+201643257729900 23
+{"channel":"heartbeat"}
+201643359253700 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63006.4,"qty":0.00000000},{"price":63009.2,"qty":0.28229589}],"checksum":1991223987,"timestamp":"2026-08-01T02:54:32.695892Z"}]}
+201644227540600 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62992.1,"qty":0.05120000}],"asks":[],"checksum":683883806,"timestamp":"2026-08-01T02:54:33.563628Z"}]}
+201644254550800 23
+{"channel":"heartbeat"}
+201644699739500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.83367769}],"checksum":3248435055,"timestamp":"2026-08-01T02:54:34.035518Z"}]}
+201644824846900 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62992.1,"qty":0.00000000},{"price":62988.0,"qty":0.04762812}],"asks":[],"checksum":2683549890,"timestamp":"2026-08-01T02:54:34.161956Z"}]}
+201645253006000 23
+{"channel":"heartbeat"}
+201645493240300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.82367769}],"checksum":1991223987,"timestamp":"2026-08-01T02:54:34.830872Z"}]}
+201645541699700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.82292204}],"checksum":2541148319,"timestamp":"2026-08-01T02:54:34.874851Z"}]}
+201645567779500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62992.1,"qty":0.05120000}],"asks":[],"checksum":3373944626,"timestamp":"2026-08-01T02:54:34.904175Z"}]}
+201646257143300 23
+{"channel":"heartbeat"}
+201646294233400 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.83392204}],"checksum":535894341,"timestamp":"2026-08-01T02:54:35.631271Z"}]}
+201647254671600 23
+{"channel":"heartbeat"}
+201647517036300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.34316739}],"checksum":3002726964,"timestamp":"2026-08-01T02:54:36.852422Z"}]}
+201647895863800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.33216739}],"checksum":2118765478,"timestamp":"2026-08-01T02:54:37.231592Z"}]}
+201648258138900 23
+{"channel":"heartbeat"}
+201648374345100 216
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62992.1,"qty":0.00000000},{"price":62988.0,"qty":0.04762812}],"asks":[],"checksum":539319307,"timestamp":"2026-08-01T02:54:37.710825Z"}]}
+201648718547700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.34416739}],"checksum":1385279883,"timestamp":"2026-08-01T02:54:38.056294Z"}]}
+201649257511400 23
+{"channel":"heartbeat"}
+201649452349600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.94157637}],"checksum":1231223527,"timestamp":"2026-08-01T02:54:38.786093Z"}]}
+201649534877900 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.92957637}],"checksum":1978841971,"timestamp":"2026-08-01T02:54:38.868031Z"}]}
+201649575754800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.92927926}],"checksum":3001702467,"timestamp":"2026-08-01T02:54:38.909877Z"}]}
+201650256773100 23
+{"channel":"heartbeat"}
+201650311349800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.94127926}],"checksum":2390366679,"timestamp":"2026-08-01T02:54:39.644627Z"}]}
+201651264220200 23
+{"channel":"heartbeat"}
+201651924594300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.92927926}],"checksum":3001702467,"timestamp":"2026-08-01T02:54:41.261100Z"}]}
+201652256139600 23
+{"channel":"heartbeat"}
+201652846960000 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.2,"qty":0.72362788}],"checksum":590713688,"timestamp":"2026-08-01T02:54:42.183771Z"}]}
+201652921894100 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.1,"qty":0.00222061}],"checksum":2127937945,"timestamp":"2026-08-01T02:54:42.258839Z"}]}
+201653255665400 23
+{"channel":"heartbeat"}
+201653548727500 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.1,"qty":0.00000000},{"price":63009.2,"qty":0.28229589}],"checksum":3001702467,"timestamp":"2026-08-01T02:54:42.886077Z"}]}
+201654255352000 23
+{"channel":"heartbeat"}
+201654506080300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.92790608}],"checksum":3505752551,"timestamp":"2026-08-01T02:54:43.842519Z"}]}
+201655261259000 23
+{"channel":"heartbeat"}
+201655576869500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.1,"qty":0.00222061}],"checksum":1699822117,"timestamp":"2026-08-01T02:54:44.912004Z"}]}
+201656256133400 23
+{"channel":"heartbeat"}
+201656365846200 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62992.1,"qty":0.05120000}],"asks":[],"checksum":993897864,"timestamp":"2026-08-01T02:54:45.702908Z"}]}
+201656389113800 179
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.69594396}],"checksum":5221294,"timestamp":"2026-08-01T02:54:45.714801Z"}]}
+201656498589900 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.92790608}],"checksum":993897864,"timestamp":"2026-08-01T02:54:45.834511Z"}]}
+201657254965100 23
+{"channel":"heartbeat"}
+201658075982600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.92788312}],"checksum":1875415800,"timestamp":"2026-08-01T02:54:47.412968Z"}]}
+201658255823300 23
+{"channel":"heartbeat"}
+201658326819000 179
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.93888312}],"checksum":4550478,"timestamp":"2026-08-01T02:54:47.656999Z"}]}
+201658452667300 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63006.3,"qty":0.00000000},{"price":63009.2,"qty":0.28229589}],"checksum":3437630513,"timestamp":"2026-08-01T02:54:47.789057Z"}]}
+201658452712400 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.78017305}],"checksum":381453949,"timestamp":"2026-08-01T02:54:47.789086Z"}]}
+201658522175900 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.1,"qty":0.00000000},{"price":63009.3,"qty":0.79353387}],"checksum":3847250326,"timestamp":"2026-08-01T02:54:47.856817Z"}]}
+201658644207600 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.77977625},{"price":63005.0,"qty":1.77874605}],"checksum":3548299426,"timestamp":"2026-08-01T02:54:47.972644Z"}]}
+201658743376700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.77914285}],"checksum":1486872909,"timestamp":"2026-08-01T02:54:48.080051Z"}]}
+201658794715700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.77953965}],"checksum":3086741841,"timestamp":"2026-08-01T02:54:48.131496Z"}]}
+201658853824800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.77993645}],"checksum":3244200783,"timestamp":"2026-08-01T02:54:48.185780Z"}]}
+201658881919400 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63006.0,"qty":0.00000000},{"price":63009.5,"qty":0.00005100}],"checksum":2519650159,"timestamp":"2026-08-01T02:54:48.218499Z"}]}
+201658886826800 216
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.2,"qty":0.00000000},{"price":63009.6,"qty":0.88861000}],"checksum":458053182,"timestamp":"2026-08-01T02:54:48.218941Z"}]}
+201658886861900 216
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.1,"qty":0.00000000},{"price":63009.7,"qty":0.00056500}],"checksum":454041965,"timestamp":"2026-08-01T02:54:48.219232Z"}]}
+201658886883000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.75741678}],"checksum":1749746459,"timestamp":"2026-08-01T02:54:48.219294Z"}]}
+201658886899600 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63002.6,"qty":0.00000000},{"price":62988.0,"qty":0.04762812}],"asks":[],"checksum":3777798240,"timestamp":"2026-08-01T02:54:48.219336Z"}]}
+201658893374400 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":1.16000780}],"checksum":475899707,"timestamp":"2026-08-01T02:54:48.219511Z"}]}
+201658893408000 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.8,"qty":0.00000000},{"price":63010.0,"qty":0.00072868}],"checksum":1943263744,"timestamp":"2026-08-01T02:54:48.219696Z"}]}
+201658893431200 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.03166451}],"asks":[],"checksum":606114522,"timestamp":"2026-08-01T02:54:48.219883Z"}]}
+201658893449400 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.6,"qty":0.00000000},{"price":63010.4,"qty":0.07670054}],"checksum":1837447706,"timestamp":"2026-08-01T02:54:48.219987Z"}]}
+201658893469700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.65235880}],"checksum":3990175972,"timestamp":"2026-08-01T02:54:48.220495Z"}]}
+201658907168400 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.65077162}],"checksum":958138846,"timestamp":"2026-08-01T02:54:48.223894Z"}]}
+201658907227500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.41880950}],"checksum":2193806376,"timestamp":"2026-08-01T02:54:48.224600Z"}]}
+201658907245300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.35304986}],"checksum":4137671165,"timestamp":"2026-08-01T02:54:48.225573Z"}]}
+201658907262300 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.30184986}],"checksum":592257692,"timestamp":"2026-08-01T02:54:48.229735Z"}]}
+201658907278200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62996.3,"qty":0.59740898}],"asks":[],"checksum":2869459521,"timestamp":"2026-08-01T02:54:48.232231Z"}]}
+201658918722400 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.27578044}],"asks":[],"checksum":428975280,"timestamp":"2026-08-01T02:54:48.237630Z"}]}
+201658918761200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.1,"qty":0.00158967}],"checksum":3202837901,"timestamp":"2026-08-01T02:54:48.237942Z"}]}
+201658918777600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.28364738}],"checksum":1283455386,"timestamp":"2026-08-01T02:54:48.238268Z"}]}
+201658918792700 216
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.6,"qty":0.00000000},{"price":63010.4,"qty":0.07670054}],"checksum":663018415,"timestamp":"2026-08-01T02:54:48.239223Z"}]}
+201658918810500 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.1,"qty":0.00000000},{"price":63011.4,"qty":1.58751729}],"checksum":3645550100,"timestamp":"2026-08-01T02:54:48.239618Z"}]}
+201658918828000 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.28404418}],"checksum":751431816,"timestamp":"2026-08-01T02:54:48.240366Z"}]}
+201658918842500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62991.7,"qty":0.03283500}],"asks":[],"checksum":3869980277,"timestamp":"2026-08-01T02:54:48.242774Z"}]}
+201658918857400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.08404418}],"checksum":2726266193,"timestamp":"2026-08-01T02:54:48.243725Z"}]}
+201658947120800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62996.4,"qty":0.17832658}],"asks":[],"checksum":3315697734,"timestamp":"2026-08-01T02:54:48.246276Z"}]}
+201658947162200 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63006.5,"qty":0.00000000},{"price":63012.7,"qty":0.00005100}],"checksum":3900870852,"timestamp":"2026-08-01T02:54:48.246603Z"}]}
+201658947183400 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63011.4,"qty":0.00000000},{"price":63013.5,"qty":0.00039674}],"checksum":3385746136,"timestamp":"2026-08-01T02:54:48.247136Z"}]}
+201658947203100 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.30748044}],"asks":[],"checksum":1743847766,"timestamp":"2026-08-01T02:54:48.248147Z"}]}
+201658947219400 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.3,"qty":0.00000000},{"price":63014.5,"qty":0.09861692}],"checksum":2802183574,"timestamp":"2026-08-01T02:54:48.251772Z"}]}
+201658947238400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63014.5,"qty":0.53978245}],"checksum":2376267654,"timestamp":"2026-08-01T02:54:48.253434Z"}]}
+201658947254200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.33848044}],"asks":[],"checksum":3895503347,"timestamp":"2026-08-01T02:54:48.254269Z"}]}
+201658947323200 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.2,"qty":0.00000000},{"price":63015.8,"qty":0.00005100}],"checksum":1416214282,"timestamp":"2026-08-01T02:54:48.254415Z"}]}
+201658947342800 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.05304418}],"checksum":135093734,"timestamp":"2026-08-01T02:54:48.258950Z"}]}
+201658947359000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.25304418}],"checksum":1736466372,"timestamp":"2026-08-01T02:54:48.259036Z"}]}
+201658959911900 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.24764418}],"checksum":2042621148,"timestamp":"2026-08-01T02:54:48.263402Z"}]}
+201658959950300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63007.3,"qty":0.85355998}],"checksum":1425285237,"timestamp":"2026-08-01T02:54:48.264802Z"}]}
+201658959968400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63012.7,"qty":0.79354268}],"checksum":1100915802,"timestamp":"2026-08-01T02:54:48.265165Z"}]}
+201658959985500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62999.8,"qty":0.79365290}],"asks":[],"checksum":2989418461,"timestamp":"2026-08-01T02:54:48.265317Z"}]}
+201658960002500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62998.0,"qty":0.79367500}],"asks":[],"checksum":3816788770,"timestamp":"2026-08-01T02:54:48.265851Z"}]}
+201658960019100 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62995.6,"qty":0.79370517}],"asks":[],"checksum":2117881262,"timestamp":"2026-08-01T02:54:48.265989Z"}]}
+201658960035300 216
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63013.5,"qty":0.00000000},{"price":63016.3,"qty":0.14511965}],"checksum":297334617,"timestamp":"2026-08-01T02:54:48.267020Z"}]}
+201658960055200 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62996.3,"qty":0.00000000},{"price":62993.9,"qty":0.00005100}],"asks":[],"checksum":2518097390,"timestamp":"2026-08-01T02:54:48.267351Z"}]}
+201658960075400 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62999.8,"qty":0.00000000},{"price":62992.1,"qty":0.05120000}],"asks":[],"checksum":1173221895,"timestamp":"2026-08-01T02:54:48.273987Z"}]}
+201658960095300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.04764418}],"checksum":2507384171,"timestamp":"2026-08-01T02:54:48.274735Z"}]}
+201658960111800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62998.5,"qty":0.05120000}],"asks":[],"checksum":2459039106,"timestamp":"2026-08-01T02:54:48.275396Z"}]}
+201658990532300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62996.4,"qty":0.39244887}],"asks":[],"checksum":1215752892,"timestamp":"2026-08-01T02:54:48.279780Z"}]}
+201658990585600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62996.4,"qty":0.17832658}],"asks":[],"checksum":2459039106,"timestamp":"2026-08-01T02:54:48.279814Z"}]}
+201658990610600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.24764418}],"checksum":1108321006,"timestamp":"2026-08-01T02:54:48.281144Z"}]}
+201658990634300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63007.3,"qty":0.06000000}],"checksum":3661624138,"timestamp":"2026-08-01T02:54:48.282760Z"}]}
+201658990657000 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62998.0,"qty":0.00000000},{"price":62992.1,"qty":0.05120000}],"asks":[],"checksum":2240896611,"timestamp":"2026-08-01T02:54:48.283316Z"}]}
+201658990739600 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62995.6,"qty":0.00000000},{"price":62991.8,"qty":0.00158700}],"asks":[],"checksum":1343845841,"timestamp":"2026-08-01T02:54:48.283325Z"}]}
+201658990761600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63013.0,"qty":0.23196212}],"checksum":4075447549,"timestamp":"2026-08-01T02:54:48.284033Z"}]}
+201658990779000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63001.6,"qty":0.59740898}],"asks":[],"checksum":3823654712,"timestamp":"2026-08-01T02:54:48.287117Z"}]}
+201658990796400 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62996.4,"qty":0.00000000},{"price":62991.8,"qty":0.00158700}],"asks":[],"checksum":3038938864,"timestamp":"2026-08-01T02:54:48.287557Z"}]}
+201658990817700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.23664418}],"checksum":3737007536,"timestamp":"2026-08-01T02:54:48.287829Z"}]}
+201658990834700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.09436451}],"asks":[],"checksum":1101389247,"timestamp":"2026-08-01T02:54:48.290712Z"}]}
+201658990852400 252
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63013.0,"qty":0.00000000},{"price":63016.3,"qty":0.14511965},{"price":63014.4,"qty":0.23196212}],"checksum":2511376668,"timestamp":"2026-08-01T02:54:48.291030Z"}]}
+201658990877200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.20490067}],"checksum":3388759719,"timestamp":"2026-08-01T02:54:48.291762Z"}]}
+201658990894700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.21030067}],"checksum":1484553225,"timestamp":"2026-08-01T02:54:48.293936Z"}]}
+201658990911800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.06266451}],"asks":[],"checksum":3804168079,"timestamp":"2026-08-01T02:54:48.293985Z"}]}
+201658990929300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.21069747}],"checksum":2693643230,"timestamp":"2026-08-01T02:54:48.296178Z"}]}
+201658990946600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.03166451}],"asks":[],"checksum":3065878370,"timestamp":"2026-08-01T02:54:48.296764Z"}]}
+201658990964100 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.9,"qty":0.79353970}],"checksum":231500427,"timestamp":"2026-08-01T02:54:48.297539Z"}]}
+201658990981400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.24169747}],"checksum":1528880504,"timestamp":"2026-08-01T02:54:48.300565Z"}]}
+201658990998300 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63001.6,"qty":0.00000000},{"price":62991.7,"qty":0.73947512}],"asks":[],"checksum":1725267744,"timestamp":"2026-08-01T02:54:48.300716Z"}]}
+201658991019700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.06266451}],"asks":[],"checksum":1894077340,"timestamp":"2026-08-01T02:54:48.301231Z"}]}
+201658991037200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.24194769}],"checksum":3502595556,"timestamp":"2026-08-01T02:54:48.303011Z"}]}
+201659011928000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.03166451}],"asks":[],"checksum":3337974104,"timestamp":"2026-08-01T02:54:48.306610Z"}]}
+201659011969200 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62997.1,"qty":0.02896972}],"asks":[],"checksum":216521960,"timestamp":"2026-08-01T02:54:48.308800Z"}]}
+201659011986400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.21094769}],"checksum":1402211549,"timestamp":"2026-08-01T02:54:48.309292Z"}]}
+201659012055200 252
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63014.4,"qty":0.00000000},{"price":63015.8,"qty":0.00005100},{"price":63013.0,"qty":0.23196212}],"checksum":3239209711,"timestamp":"2026-08-01T02:54:48.313007Z"}]}
+201659012077300 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63010.4,"qty":0.03174078}],"checksum":427331718,"timestamp":"2026-08-01T02:54:48.316004Z"}]}
+201659012092400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63003.1,"qty":0.59740898}],"asks":[],"checksum":2260645535,"timestamp":"2026-08-01T02:54:48.318260Z"}]}
+201659012108400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62994.0,"qty":0.04762359}],"asks":[],"checksum":2749230350,"timestamp":"2026-08-01T02:54:48.320360Z"}]}
+201659012124300 252
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63013.0,"qty":0.00000000},{"price":63015.8,"qty":0.00005100},{"price":63014.4,"qty":0.23196212}],"checksum":3934056340,"timestamp":"2026-08-01T02:54:48.320377Z"}]}
+201659012145600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62994.1,"qty":0.02951407}],"asks":[],"checksum":1126380722,"timestamp":"2026-08-01T02:54:48.324343Z"}]}
+201659012167800 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.9,"qty":0.00000000},{"price":63015.4,"qty":0.88861100}],"checksum":2364325906,"timestamp":"2026-08-01T02:54:48.324813Z"}]}
+201659012186400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.71863269}],"checksum":2242271850,"timestamp":"2026-08-01T02:54:48.324904Z"}]}
+201659012201300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63014.5,"qty":0.09861692}],"checksum":2910713130,"timestamp":"2026-08-01T02:54:48.326236Z"}]}
+201659012216300 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.74963269}],"checksum":415739609,"timestamp":"2026-08-01T02:54:48.327345Z"}]}
+201659012231400 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63014.5,"qty":0.00000000},{"price":63015.8,"qty":0.00005100}],"checksum":1621432620,"timestamp":"2026-08-01T02:54:48.327627Z"}]}
+201659012249600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63015.3,"qty":0.81997216}],"checksum":2260090464,"timestamp":"2026-08-01T02:54:48.328740Z"}]}
+201659016237100 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.24194769}],"checksum":2415698968,"timestamp":"2026-08-01T02:54:48.341816Z"}]}
+201659016268800 252
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63014.4,"qty":0.00000000},{"price":63015.8,"qty":0.00005100},{"price":63012.5,"qty":0.23196212}],"checksum":2004890606,"timestamp":"2026-08-01T02:54:48.342191Z"}]}
+201659016293600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.21094769}],"checksum":1400973843,"timestamp":"2026-08-01T02:54:48.343913Z"}]}
+201659016310500 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.15372248}],"asks":[],"checksum":314487858,"timestamp":"2026-08-01T02:54:48.344326Z"}]}
+201659016327700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.21069747}],"checksum":2911474182,"timestamp":"2026-08-01T02:54:48.344644Z"}]}
+201659016344500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.18472248}],"asks":[],"checksum":3418493364,"timestamp":"2026-08-01T02:54:48.347475Z"}]}
+201659024452900 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.01069747}],"checksum":3134198906,"timestamp":"2026-08-01T02:54:48.350972Z"}]}
+201659024601400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.20345192}],"asks":[],"checksum":1484028204,"timestamp":"2026-08-01T02:54:48.352092Z"}]}
+201659024619400 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.23515192}],"asks":[],"checksum":851786695,"timestamp":"2026-08-01T02:54:48.354484Z"}]}
+201659024636200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.00529747}],"checksum":1744287419,"timestamp":"2026-08-01T02:54:48.354652Z"}]}
+201659024653000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.00554769}],"checksum":2046095574,"timestamp":"2026-08-01T02:54:48.355861Z"}]}
+201659024670300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.11309395}],"asks":[],"checksum":4273816769,"timestamp":"2026-08-01T02:54:48.356002Z"}]}
+201659024686300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.20554769}],"checksum":1396805191,"timestamp":"2026-08-01T02:54:48.358279Z"}]}
+201659030614800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.21094769}],"checksum":2074717226,"timestamp":"2026-08-01T02:54:48.361831Z"}]}
+201659030642400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63015.3,"qty":1.16609074}],"checksum":1890200200,"timestamp":"2026-08-01T02:54:48.361894Z"}]}
+201659030658800 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.08209395}],"asks":[],"checksum":458432815,"timestamp":"2026-08-01T02:54:48.362083Z"}]}
+201659030674400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63015.3,"qty":0.34611858}],"checksum":3122860510,"timestamp":"2026-08-01T02:54:48.362115Z"}]}
+201659030689100 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.05039395}],"asks":[],"checksum":264556044,"timestamp":"2026-08-01T02:54:48.362167Z"}]}
+201659030704000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.08139395}],"asks":[],"checksum":3300443608,"timestamp":"2026-08-01T02:54:48.363595Z"}]}
+201659030719100 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.24194769}],"checksum":3770276901,"timestamp":"2026-08-01T02:54:48.364523Z"}]}
+201659030733800 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.05039395}],"asks":[],"checksum":734386161,"timestamp":"2026-08-01T02:54:48.364869Z"}]}
+201659030748400 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.21094769}],"checksum":264556044,"timestamp":"2026-08-01T02:54:48.365929Z"}]}
+201659044464000 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.4,"qty":0.79358284}],"checksum":118034796,"timestamp":"2026-08-01T02:54:48.380489Z"}]}
+201659044504300 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62999.4,"qty":0.79365794}],"asks":[],"checksum":810344239,"timestamp":"2026-08-01T02:54:48.380788Z"}]}
+201659051556900 251
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63012.5,"qty":0.00000000},{"price":63015.4,"qty":0.88861100},{"price":63010.8,"qty":0.23196212}],"checksum":251223905,"timestamp":"2026-08-01T02:54:48.382160Z"}]}
+201659051596600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63014.2,"qty":0.01574458}],"checksum":1702603134,"timestamp":"2026-08-01T02:54:48.383911Z"}]}
+201659051636500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.01094769}],"checksum":3338399290,"timestamp":"2026-08-01T02:54:48.384204Z"}]}
+201659052666400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.08209395}],"asks":[],"checksum":2928917021,"timestamp":"2026-08-01T02:54:48.386176Z"}]}
+201659052693400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.00554769}],"checksum":2093731339,"timestamp":"2026-08-01T02:54:48.386201Z"}]}
+201659052711100 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.11309395}],"asks":[],"checksum":1453197701,"timestamp":"2026-08-01T02:54:48.386808Z"}]}
+201659052728400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.20554769}],"checksum":4217553667,"timestamp":"2026-08-01T02:54:48.388350Z"}]}
+201659059500300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63012.6,"qty":0.01100000}],"checksum":1614030582,"timestamp":"2026-08-01T02:54:48.389212Z"}]}
+201659059531500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.08209395}],"asks":[],"checksum":3584969633,"timestamp":"2026-08-01T02:54:48.390283Z"}]}
+201659059550200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.05039395}],"asks":[],"checksum":3183878022,"timestamp":"2026-08-01T02:54:48.390605Z"}]}
+201659059566900 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.21094769}],"checksum":1465707710,"timestamp":"2026-08-01T02:54:48.391068Z"}]}
+201659062678100 252
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63010.8,"qty":0.00000000},{"price":63014.2,"qty":0.01574458},{"price":63011.6,"qty":0.23196212}],"checksum":3066989639,"timestamp":"2026-08-01T02:54:48.396076Z"}]}
+201659062715200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.17245192}],"asks":[],"checksum":4254354192,"timestamp":"2026-08-01T02:54:48.398198Z"}]}
+201659062733600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.21069747}],"checksum":1118006564,"timestamp":"2026-08-01T02:54:48.398425Z"}]}
+201659070648000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.20345192}],"asks":[],"checksum":2274213046,"timestamp":"2026-08-01T02:54:48.399702Z"}]}
+201659070686800 252
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63011.6,"qty":0.00000000},{"price":63014.2,"qty":0.01574458},{"price":63013.0,"qty":0.23196212}],"checksum":4203099370,"timestamp":"2026-08-01T02:54:48.402366Z"}]}
+201659070710800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.21094769}],"checksum":1169232606,"timestamp":"2026-08-01T02:54:48.403214Z"}]}
+201659070727200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.08139395}],"asks":[],"checksum":1001196302,"timestamp":"2026-08-01T02:54:48.403300Z"}]}
+201659074723900 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.05039395}],"asks":[],"checksum":3134742984,"timestamp":"2026-08-01T02:54:48.405876Z"}]}
+201659080244500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.21055089}],"checksum":3047690015,"timestamp":"2026-08-01T02:54:48.412105Z"}]}
+201659082793700 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62999.4,"qty":0.00000000},{"price":62994.0,"qty":0.04762359}],"asks":[],"checksum":2263480638,"timestamp":"2026-08-01T02:54:48.416279Z"}]}
+201659082825200 252
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63013.0,"qty":0.00000000},{"price":63014.2,"qty":0.01574458},{"price":63010.3,"qty":0.23196212}],"checksum":3041158240,"timestamp":"2026-08-01T02:54:48.419047Z"}]}
+201659105981200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.71823589}],"checksum":1729632135,"timestamp":"2026-08-01T02:54:48.441603Z"}]}
+201659111818900 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.74923589}],"checksum":3533851764,"timestamp":"2026-08-01T02:54:48.443709Z"}]}
+201659124285500 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63010.3,"qty":0.00000000},{"price":63014.2,"qty":0.01574458}],"checksum":1069917170,"timestamp":"2026-08-01T02:54:48.458688Z"}]}
+201659144912700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.74883909}],"checksum":3061409825,"timestamp":"2026-08-01T02:54:48.472709Z"}]}
+201659154735400 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.4,"qty":0.00000000},{"price":63015.3,"qty":0.34611858}],"checksum":4244753481,"timestamp":"2026-08-01T02:54:48.479164Z"}]}
+201659154775100 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63007.3,"qty":0.00000000},{"price":63015.4,"qty":0.88861100}],"checksum":2067383908,"timestamp":"2026-08-01T02:54:48.479549Z"}]}
+201659155013400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63014.6,"qty":0.06000000}],"checksum":3530294140,"timestamp":"2026-08-01T02:54:48.480392Z"}]}
+201659155041100 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63006.2,"qty":0.79357338}],"checksum":408064782,"timestamp":"2026-08-01T02:54:48.480628Z"}]}
+201659155057200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62998.6,"qty":0.79366750}],"asks":[],"checksum":3547981443,"timestamp":"2026-08-01T02:54:48.480948Z"}]}
+201659155073000 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62998.7,"qty":0.25219295}],"asks":[],"checksum":688175582,"timestamp":"2026-08-01T02:54:48.482199Z"}]}
+201659164876500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63012.6,"qty":0.25257225}],"checksum":2785853945,"timestamp":"2026-08-01T02:54:48.495175Z"}]}
+201659164916600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63012.2,"qty":0.01574458}],"checksum":2202169519,"timestamp":"2026-08-01T02:54:48.498842Z"}]}
+201659164937000 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63014.2,"qty":0.00000000},{"price":63014.6,"qty":0.06000000}],"checksum":1916759355,"timestamp":"2026-08-01T02:54:48.499449Z"}]}
+201659191099900 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63003.1,"qty":0.00000000},{"price":62996.5,"qty":0.06219499}],"asks":[],"checksum":2930526977,"timestamp":"2026-08-01T02:54:48.526680Z"}]}
+201659191146000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63011.3,"qty":0.59740898}],"checksum":2504294081,"timestamp":"2026-08-01T02:54:48.527109Z"}]}
+201659193612600 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63012.6,"qty":0.01100000}],"checksum":664067554,"timestamp":"2026-08-01T02:54:48.528501Z"}]}
+201659196454700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63011.2,"qty":0.42318233}],"checksum":4275537367,"timestamp":"2026-08-01T02:54:48.529857Z"}]}
+201659196486400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.74844229}],"checksum":1915009234,"timestamp":"2026-08-01T02:54:48.531807Z"}]}
+201659259829200 23
+{"channel":"heartbeat"}
+201659278237200 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.0,"qty":0.74804549}],"checksum":164114751,"timestamp":"2026-08-01T02:54:48.589097Z"}]}
+201659278300500 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63011.3,"qty":0.00000000},{"price":63012.7,"qty":0.79354268}],"checksum":1062470122,"timestamp":"2026-08-01T02:54:48.592851Z"}]}
+201659278320800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62998.7,"qty":0.84960193}],"asks":[],"checksum":2051982185,"timestamp":"2026-08-01T02:54:48.593136Z"}]}
+201659278336500 216
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63011.2,"qty":0.00000000},{"price":63014.6,"qty":0.06000000}],"checksum":951458292,"timestamp":"2026-08-01T02:54:48.594198Z"}]}
+201659278354500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63012.6,"qty":0.24787249}],"checksum":2810009384,"timestamp":"2026-08-01T02:54:48.596262Z"}]}
+201659278369400 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62998.6,"qty":0.00000000},{"price":62994.1,"qty":0.02951407}],"asks":[],"checksum":3635455413,"timestamp":"2026-08-01T02:54:48.599905Z"}]}
+201659278388100 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63007.8,"qty":0.79355276}],"checksum":764638453,"timestamp":"2026-08-01T02:54:48.601317Z"}]}
+201659278403000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62999.3,"qty":0.79365839}],"asks":[],"checksum":3982731161,"timestamp":"2026-08-01T02:54:48.604324Z"}]}
+201659278418200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62998.7,"qty":0.59740898}],"asks":[],"checksum":4102473163,"timestamp":"2026-08-01T02:54:48.605653Z"}]}
+201659278433000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62996.7,"qty":0.79369186}],"asks":[],"checksum":3680179701,"timestamp":"2026-08-01T02:54:48.606073Z"}]}
+201659284692300 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62997.1,"qty":0.28074823}],"asks":[],"checksum":3640568384,"timestamp":"2026-08-01T02:54:48.609082Z"}]}
+201659284726400 180
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63012.6,"qty":0.47983461}],"checksum":15375418,"timestamp":"2026-08-01T02:54:48.617375Z"}]}
+201659297364700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63010.0,"qty":0.01647326}],"checksum":1993717295,"timestamp":"2026-08-01T02:54:48.630082Z"}]}
+201659297399200 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63012.2,"qty":0.00000000},{"price":63014.6,"qty":0.06000000}],"checksum":3582836098,"timestamp":"2026-08-01T02:54:48.630151Z"}]}
+201659357793300 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63003.3,"qty":0.00000000},{"price":62996.5,"qty":0.06219499}],"asks":[],"checksum":1576724548,"timestamp":"2026-08-01T02:54:48.685734Z"}]}
+201659357843200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63006.4,"qty":0.00005100}],"checksum":4100362982,"timestamp":"2026-08-01T02:54:48.686300Z"}]}
+201659361709100 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62999.3,"qty":0.00000000},{"price":62994.1,"qty":0.26267262}],"asks":[],"checksum":1899149859,"timestamp":"2026-08-01T02:54:48.699573Z"}]}
+201659364503000 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63006.2,"qty":0.00000000},{"price":63014.6,"qty":0.06000000}],"checksum":2286835443,"timestamp":"2026-08-01T02:54:48.700067Z"}]}
+201659365347000 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.5,"qty":0.79358163}],"checksum":661274405,"timestamp":"2026-08-01T02:54:48.701426Z"}]}
+201659365368700 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62998.6,"qty":0.79366815}],"asks":[],"checksum":778979495,"timestamp":"2026-08-01T02:54:48.702179Z"}]}
+201659388389800 215
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.7,"qty":0.00000000},{"price":63014.6,"qty":0.06000000}],"checksum":31557168,"timestamp":"2026-08-01T02:54:48.724536Z"}]}
+201659563608600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63010.0,"qty":0.00072868}],"checksum":2178170945,"timestamp":"2026-08-01T02:54:48.900279Z"}]}
+201659563651600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.7,"qty":0.01574458}],"checksum":3433029200,"timestamp":"2026-08-01T02:54:48.900525Z"}]}
+201659570619700 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62998.7,"qty":0.00000000},{"price":62994.1,"qty":0.26267262}],"asks":[],"checksum":2011090291,"timestamp":"2026-08-01T02:54:48.907750Z"}]}
+201659571569100 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63007.7,"qty":0.59740898}],"checksum":3004260782,"timestamp":"2026-08-01T02:54:48.908110Z"}]}
+201659697674200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63000.2,"qty":0.00163829}],"asks":[],"checksum":2919678597,"timestamp":"2026-08-01T02:54:49.035359Z"}]}
+201659780708400 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62998.6,"qty":0.00000000},{"price":62994.0,"qty":0.04762359}],"asks":[],"checksum":3269061519,"timestamp":"2026-08-01T02:54:49.117273Z"}]}
+201659781340300 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62996.7,"qty":0.00000000},{"price":62993.9,"qty":0.00005100}],"asks":[],"checksum":3215290055,"timestamp":"2026-08-01T02:54:49.117652Z"}]}
+201659782634400 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62997.1,"qty":0.02896972}],"asks":[],"checksum":2441810807,"timestamp":"2026-08-01T02:54:49.120224Z"}]}
+201659782664100 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62997.7,"qty":0.79367853}],"asks":[],"checksum":541760740,"timestamp":"2026-08-01T02:54:49.120237Z"}]}
+201659782681700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62995.6,"qty":0.79370536}],"asks":[],"checksum":3662237032,"timestamp":"2026-08-01T02:54:49.120268Z"}]}
+201659785217200 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62997.1,"qty":0.00000000},{"price":62994.0,"qty":0.04762359}],"asks":[],"checksum":1500312231,"timestamp":"2026-08-01T02:54:49.121908Z"}]}
+201659785250700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62997.8,"qty":0.28444797}],"asks":[],"checksum":1691415095,"timestamp":"2026-08-01T02:54:49.122044Z"}]}
+201659831981000 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62997.7,"qty":0.00000000},{"price":62994.0,"qty":0.04762359}],"asks":[],"checksum":1767709429,"timestamp":"2026-08-01T02:54:49.169293Z"}]}
+201659850241200 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.03166451}],"asks":[],"checksum":3660764626,"timestamp":"2026-08-01T02:54:49.186210Z"}]}
+201659905299100 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62994.7,"qty":0.72000000}],"asks":[],"checksum":1270410963,"timestamp":"2026-08-01T02:54:49.242217Z"}]}
+201659923556800 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.0,"qty":0.00158708}],"checksum":875275250,"timestamp":"2026-08-01T02:54:49.259647Z"}]}
+201659925954500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62997.8,"qty":1.07812577}],"asks":[],"checksum":1821201612,"timestamp":"2026-08-01T02:54:49.264042Z"}]}
+201659935845000 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63003.3,"qty":0.00005100}],"asks":[],"checksum":4249901719,"timestamp":"2026-08-01T02:54:49.273917Z"}]}
+201659972161800 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63008.7,"qty":0.00000000},{"price":63012.6,"qty":0.47983461}],"checksum":3675470500,"timestamp":"2026-08-01T02:54:49.306620Z"}]}
+201659972206800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63004.9,"qty":0.01661321}],"asks":[],"checksum":3831443536,"timestamp":"2026-08-01T02:54:49.306754Z"}]}
+201659972223500 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63007.1,"qty":0.01574458}],"checksum":3988424158,"timestamp":"2026-08-01T02:54:49.306952Z"}]}
+201659975255100 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":63003.6,"qty":0.01505130}],"asks":[],"checksum":970924028,"timestamp":"2026-08-01T02:54:49.308227Z"}]}
+201660008866500 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63007.8,"qty":0.00000000},{"price":63012.6,"qty":0.47983461}],"checksum":4259346833,"timestamp":"2026-08-01T02:54:49.344982Z"}]}
+201660008919800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63006.7,"qty":0.79356707}],"checksum":3045367171,"timestamp":"2026-08-01T02:54:49.346729Z"}]}
+201660238180800 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.4,"qty":0.65680545}],"checksum":3571477087,"timestamp":"2026-08-01T02:54:49.574756Z"}]}
+201660259271700 23
+{"channel":"heartbeat"}
+201660271570700 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63009.9,"qty":0.00158706}],"checksum":2727411365,"timestamp":"2026-08-01T02:54:49.589210Z"}]}
+201661161350700 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62997.8,"qty":0.28444797}],"asks":[],"checksum":623763228,"timestamp":"2026-08-01T02:54:50.498577Z"}]}
+201661162096100 180
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62998.5,"qty":0.84486940}],"asks":[],"checksum":82783027,"timestamp":"2026-08-01T02:54:50.500109Z"}]}
+201661260546400 23
+{"channel":"heartbeat"}
+201661516463400 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[{"price":62997.7,"qty":0.59740898}],"asks":[],"checksum":457353090,"timestamp":"2026-08-01T02:54:50.851640Z"}]}
+201662258728900 23
+{"channel":"heartbeat"}
+201663261165100 23
+{"channel":"heartbeat"}
+201663271887800 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63007.7,"qty":0.00000000},{"price":63010.0,"qty":0.00072868}],"checksum":2609558147,"timestamp":"2026-08-01T02:54:52.601118Z"}]}
+201663271926500 217
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.4,"qty":0.00000000},{"price":63010.4,"qty":0.03174078}],"checksum":3172479514,"timestamp":"2026-08-01T02:54:52.603667Z"}]}
+201663271943000 181
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63005.4,"qty":0.47847887}],"checksum":376238870,"timestamp":"2026-08-01T02:54:52.604639Z"}]}
+201663927798600 182
+{"channel":"book","type":"update","data":[{"symbol":"BTC/USD","bids":[],"asks":[{"price":63006.3,"qty":0.23809104}],"checksum":3793782525,"timestamp":"2026-08-01T02:54:53.266327Z"}]}

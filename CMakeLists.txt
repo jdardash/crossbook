@@ -23,6 +23,8 @@ else()
 endif()
 
 option(CROSSBOOK_BUILD_TESTS "Build the test suite" ${CROSSBOOK_IS_TOP_LEVEL})
+option(CROSSBOOK_BUILD_TOOLS "Build the network tools (needs a TLS backend)"
+       ${CROSSBOOK_IS_TOP_LEVEL})
 option(CROSSBOOK_BUILD_BENCH "Build the benchmarks" OFF)
 option(CROSSBOOK_BUILD_FUZZ "Build the fuzz targets (clang only)" OFF)
 option(CROSSBOOK_WERROR "Treat warnings as errors" ${CROSSBOOK_IS_TOP_LEVEL})
@@ -88,6 +90,39 @@ endif()
 
 if(CROSSBOOK_BUILD_BENCH)
     add_subdirectory(bench)
+endif()
+
+# ---------------------------------------------------------------------------
+# Transport and tools
+#
+# Kept behind an option and in a separate target because this is the only part
+# of the project with a platform dependency. Windows uses Schannel, which ships
+# with the OS; everywhere else uses OpenSSL. Nothing here is reachable from the
+# header-only library, so consuming `crossbook::crossbook` still costs nothing.
+#
+# When there is no TLS backend the tools are skipped with a message rather than
+# built without TLS. Talking to an exchange in plaintext is not a degraded mode,
+# it is a different and much worse program.
+# ---------------------------------------------------------------------------
+if(CROSSBOOK_BUILD_TOOLS)
+    if(WIN32)
+        set(CROSSBOOK_HAVE_TLS ON)
+    else()
+        find_package(OpenSSL)
+        if(OpenSSL_FOUND)
+            set(CROSSBOOK_HAVE_TLS ON)
+        else()
+            set(CROSSBOOK_HAVE_TLS OFF)
+            message(STATUS
+                "crossbook: OpenSSL not found - skipping the network tools. "
+                "Install libssl-dev (Debian/Ubuntu) or openssl (Homebrew) to build them.")
+        endif()
+    endif()
+
+    if(CROSSBOOK_HAVE_TLS)
+        add_subdirectory(src/net)
+        add_subdirectory(tools)
+    endif()
 endif()
 
 if(CROSSBOOK_BUILD_FUZZ)
