@@ -23,6 +23,7 @@ add_executable(crossbook_tests
     test_histogram.cpp
     test_json.cpp
     test_venues.cpp
+    test_binance_sbe.cpp
     test_feed.cpp
     test_replay.cpp
     test_execution.cpp
@@ -47,6 +48,20 @@ target_link_libraries(crossbook_tests PRIVATE
     crossbook_warnings
     Catch2::Catch2WithMain
 )
+
+# The transport is only built when a TLS backend exists, so its loopback tests
+# come and go with it. They test TcpSocket directly — an internal header, which
+# is why the include path reaches into src/net rather than the public tree.
+# Deferred to the end of the top-level configure because this directory is
+# processed before src/net, so `TARGET crossbook_net` is not knowable yet here.
+function(crossbook_add_transport_tests)
+    if(TARGET crossbook_net)
+        target_sources(crossbook_tests PRIVATE ${PROJECT_SOURCE_DIR}/tests/test_transport.cpp)
+        target_link_libraries(crossbook_tests PRIVATE crossbook::net)
+        target_include_directories(crossbook_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/net)
+    endif()
+endfunction()
+cmake_language(DEFER DIRECTORY ${PROJECT_SOURCE_DIR} CALL crossbook_add_transport_tests)
 
 # Somewhere writable for the capture round-trip test. The build tree, so a test
 # run leaves nothing behind in the source tree or in a shared temp directory.

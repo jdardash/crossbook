@@ -110,6 +110,8 @@ void print_usage() {
         "  --url <url>        dial this URL instead of a venue preset\n"
         "  --subscribe <json> send this after connecting; use with --url\n"
         "  --quiet            suppress the periodic progress line\n"
+        "  --busy-poll        spin on the socket instead of sleeping in the kernel;\n"
+        "                     burns a core, removes the scheduler wakeup per message\n"
         "  --help             this text\n"
         "\n"
         "Examples:\n"
@@ -143,6 +145,7 @@ int main(int argc, char** argv) {
     int depth = 10;
     int seconds = 30;
     bool quiet = false;
+    bool busy_poll = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
@@ -173,6 +176,8 @@ int main(int argc, char** argv) {
             seconds = std::atoi(value("--seconds"));
         } else if (arg == "--quiet") {
             quiet = true;
+        } else if (arg == "--busy-poll") {
+            busy_poll = true;
         } else {
             std::fprintf(stderr, "error: unknown option %.*s\n", static_cast<int>(arg.size()),
                          arg.data());
@@ -222,12 +227,27 @@ int main(int argc, char** argv) {
         std::printf("recording to %s\n", out_path.c_str());
     }
 
+    if (busy_poll) {
+        // After the subscribe: the handshake wants its generous timeout, the
+        // steady state wants no kernel sleep at all.
+        client.set_read_timeout(0);
+        std::printf("busy-poll: spinning on the socket, one core is now spoken for\n");
+    }
+
     const std::int64_t start = steady_ns();
     const std::int64_t deadline =
         seconds > 0 ? start + static_cast<std::int64_t>(seconds) * 1'000'000'000LL : 0;
 
     std::vector<std::int64_t> gaps;
     gaps.reserve(1 << 16);
+
+    // Kernel-to-user delivery: the gap between the kernel stamping the segment
+    // and this loop holding the decoded message. This is the number busy-poll
+    // exists to shrink, and it is only measurable where the transport exposes
+    // an arrival clock (Linux).
+    std::vector<std::int64_t> delivery;
+    delivery.reserve(1 << 16);
+    std::int64_t last_rx_seen = 0;
 
     std::uint64_t frames = 0;
     std::uint64_t bytes = 0;
@@ -255,6 +275,23 @@ int main(int argc, char** argv) {
                 gaps.push_back(now - previous);
             }
             previous = now;
+
+            // Only score a message against a socket read it plausibly came
+            // from: several messages can ride one read, and re-counting the
+            // same arrival stamp would flatter the tail. First message per
+            // fresh stamp only.
+            const std::int64_t rx = client.last_rx_time_ns();
+            if (rx != 0 && rx != last_rx_seen) {
+                last_rx_seen = rx;
+                const std::int64_t user_now =
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+                const std::int64_t delta = user_now - rx;
+                if (delta >= 0) {
+                    delivery.push_back(delta);
+                }
+            }
 
             if (writer.is_open() && !writer.write(now, event.payload)) {
                 std::fprintf(stderr, "error: capture write failed\n");
@@ -309,6 +346,19 @@ int main(int argc, char** argv) {
                     static_cast<double>(percentile(gaps, 50)) / 1e6,
                     static_cast<double>(percentile(gaps, 99)) / 1e6,
                     static_cast<double>(gaps.back()) / 1e6);
+    }
+    if (!delivery.empty()) {
+        std::sort(delivery.begin(), delivery.end());
+        // Kernel arrival stamp to message-in-hand, one sample per socket read.
+        // Includes TLS decryption and frame reassembly; the mode is what
+        // busy-poll changes.
+        std::printf("kernel-to-user       p50 %.1f us   p99 %.1f us   max %.1f us   (n=%zu%s)\n",
+                    static_cast<double>(percentile(delivery, 50)) / 1e3,
+                    static_cast<double>(percentile(delivery, 99)) / 1e3,
+                    static_cast<double>(delivery.back()) / 1e3, delivery.size(),
+                    busy_poll ? ", busy-poll" : "");
+    } else if (busy_poll) {
+        std::printf("kernel-to-user       unavailable on this platform (no TCP arrival clock)\n");
     }
     if (writer.frames() > 0) {
         std::printf("capture              %s  (%llu frames, %.2f MiB)\n", out_path.c_str(),

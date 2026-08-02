@@ -19,6 +19,43 @@ only entries that can cost a reader an afternoon.
 
 ### Added
 
+- `venues::BinanceSbeDecoder`: the Binance spot SBE binary streams (schema
+  `spot_stream` 1:0) — depth diff and depth snapshot — decoded to the same
+  `DecodedMessage` the JSON decoders produce, with the same route-by-symbol
+  and refuse-rather-than-round contracts, and SBE blockLengths honoured so a
+  newer minor schema skips cleanly. Tested against hand-encoded frames
+  including a byte-by-byte truncation sweep; a live capture awaits an
+  Ed25519 API key, which the endpoint requires even for public data.
+- Busy-poll reads: `set_read_timeout(0)` on any transport (and
+  `WebSocketClient::set_read_timeout`) now means non-blocking spin, not the
+  platforms' block-forever. `crossbook_capture --busy-poll` uses it, and on
+  Linux reports a kernel-to-user delivery histogram from `SO_TIMESTAMPING`
+  receive stamps — measured live against Kraken, busy-poll cut delivery p50
+  from 150.4 us to 82.4 us.
+- `Transport::last_rx_time_ns`: the kernel's arrival clock for the newest
+  received data, exposed through TLS on both backends. On the OpenSSL path
+  this forced reads through a custom BIO, since a backend that lets
+  `SSL_read` call `recv()` itself can never see the control message the
+  timestamp rides in on.
+- Loopback tests for the transport layer — the busy-poll contract, the timed
+  path, and the receive timestamp — the first tests the socket has had.
+
+- `net::ByteBuffer`: a `std::vector<char>` whose `resize` default-initializes
+  instead of zeroing. The frame reader and the Schannel backend grow their
+  receive buffers by a 32 KiB chunk on every socket read and trim back to what
+  arrived; with a plain vector that was 32 KiB of memset per read, all of it
+  over bytes the transport was about to overwrite.
+- `CROSSBOOK_NATIVE` and the `release-native` preset: opt-in `-march=native`
+  (`/arch:AVX2` on MSVC) plus LTO, for measuring the ceiling on one's own
+  hardware. Off by default, and the README's numbers stay on plain release,
+  because a binary tuned to the build machine dies on the next machine.
+- The no-allocation probe now covers the decoder, `Feed::handle` end to end
+  with the checksum verified, and the frame reader's poll loop. It covered
+  the book — 0.3% of the frame — while the claim it enforces is about the
+  whole hot path.
+- `LATENCY-ROADMAP.md`: where the gap to professional software trading
+  systems actually is (environment tail, JSON ceiling, compute already
+  competitive) and the phase order for closing it, with sources.
 - `json::for_each_member`: walk an object's members once, in wire order,
   dispatching on key. A completed walk carries `well_formed`'s full guarantee,
   which is what lets the decoders below drop their separate validation pass.
@@ -40,6 +77,12 @@ only entries that can cost a reader an afternoon.
 
 ### Changed
 
+- The Schannel decrypt path copies plaintext once, straight into the caller's
+  buffer, instead of twice through an intermediate; and the unconsumed tail of
+  a pipelined TLS record is moved in place rather than through a freshly
+  allocated vector, which was a heap allocation on the common path — a busy
+  feed routinely lands the next record behind the current one in the same
+  segment.
 - Both venue decoders are single-pass. A Kraken frame was being walked ~9x —
   a `well_formed` pre-pass plus a `find` restart per field, with `checksum`
   and `timestamp` spelled after the level arrays on the wire so each of those

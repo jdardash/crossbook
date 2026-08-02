@@ -95,7 +95,21 @@ public:
     /// loop stays responsive to shutdown and to its own deadlines. Using one
     /// value for both means choosing between a client that gives up on a slow
     /// connect and a loop that hangs for ten seconds on every quiet market.
+    ///
+    /// ZERO MEANS BUSY-POLL: the socket goes non-blocking and reads return
+    /// kTimeout immediately when nothing is buffered, so a caller on a
+    /// dedicated core can spin instead of taking a scheduler wakeup per
+    /// message. It does not mean "no timeout" — that spelling of zero is the
+    /// platforms', and it is never what a latency-sensitive reader wants.
     virtual void set_read_timeout(int timeout_ms) = 0;
+
+    /// Kernel arrival time of the most recently received data, CLOCK_REALTIME
+    /// nanoseconds, or 0 where the platform offers none for TCP (Windows,
+    /// macOS) or nothing has arrived. On Linux this is per socket and queried
+    /// on demand, so it works identically under TLS. One read draining
+    /// several coalesced segments reports the newest — callers measuring
+    /// kernel-to-user delivery own that approximation.
+    [[nodiscard]] virtual std::int64_t last_rx_time_ns() const noexcept { return 0; }
 
     virtual void close() = 0;
 

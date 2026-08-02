@@ -64,7 +64,25 @@ public:
                                 std::string& error);
 
     /// Change the receive timeout on a connected socket.
+    ///
+    /// Zero means BUSY-POLL, not block-forever: the socket goes non-blocking
+    /// and `read` returns kTimeout immediately when nothing is buffered. Both
+    /// platforms natively treat a zero SO_RCVTIMEO as "no timeout", which is
+    /// the opposite of what a latency-sensitive caller ever wants; the caller
+    /// who really wants to block forever can pass a day in milliseconds.
     void set_read_timeout(int timeout_ms) noexcept;
+
+    /// Kernel arrival time of the most recently delivered data, in
+    /// CLOCK_REALTIME nanoseconds. 0 where the platform has no such clock for
+    /// TCP (Windows, macOS) or before anything has arrived.
+    ///
+    /// Captured from the control message riding each recvmsg — for TCP the
+    /// kernel offers the stamp no other way (SIOCGSTAMP is unsupported for
+    /// SOCK_STREAM). A TLS backend therefore only gets timestamps if its
+    /// reads come through this class rather than the raw fd. One read that
+    /// drains several coalesced segments carries one stamp — an approximation
+    /// the measurement consumer must own.
+    [[nodiscard]] std::int64_t last_rx_time_ns() const noexcept;
 
     /// Write all of `len`, looping over partial sends.
     [[nodiscard]] IoStatus write(const char* buf, std::size_t len, std::string& error);
@@ -76,6 +94,7 @@ public:
 
 private:
     SocketHandle fd_{kInvalidSocket};
+    std::int64_t last_rx_ns_{0};
 };
 
 }  // namespace crossbook::net::detail

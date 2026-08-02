@@ -14,6 +14,7 @@
 #include <windows.h>  // FormatMessageA / LocalFree; must follow winsock2.h.
 // clang-format on
 #else
+#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -21,6 +22,11 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <linux/net_tstamp.h>  // SOF_TIMESTAMPING_*: the API that works for TCP.
+
+#include <cstring>  // memcpy out of CMSG_DATA, which is not suitably aligned.
+#endif
 
 // Linux suppresses SIGPIPE per-send with MSG_NOSIGNAL; macOS and the BSDs do it
 // per-socket with SO_NOSIGPIPE and do not define the flag at all. Without one of
@@ -171,6 +177,18 @@ bool TcpSocket::connect(const std::string& host, std::uint16_t port, int timeout
     (void)::setsockopt(fd_, SOL_SOCKET, SO_NOSIGPIPE, &one, static_cast<SockLen>(sizeof(one)));
 #endif
 
+#ifdef __linux__
+    // Software receive timestamps, via the one API that covers TCP. The
+    // venerable SO_TIMESTAMPNS is silently a no-op for SOCK_STREAM, and
+    // SIOCGSTAMP is explicitly unsupported there — both were tried. Note the
+    // kernel arms packet stamping through a deferred static key, so the very
+    // first arrivals after connect can legitimately carry no stamp; consumers
+    // treat 0 as "not yet", not as an error.
+    const int stamping = SOF_TIMESTAMPING_RX_SOFTWARE | SOF_TIMESTAMPING_SOFTWARE;
+    (void)::setsockopt(fd_, SOL_SOCKET, SO_TIMESTAMPING, &stamping,
+                       static_cast<SockLen>(sizeof(stamping)));
+#endif
+
     set_read_timeout(timeout_ms);
 
     error.clear();
@@ -181,7 +199,18 @@ void TcpSocket::set_read_timeout(int timeout_ms) noexcept {
     if (fd_ == kInvalidSocket) {
         return;
     }
+
+    // Zero is the busy-poll contract (see the header): non-blocking mode, so a
+    // read with nothing buffered comes back kTimeout immediately and the
+    // caller's spin owns the waiting. The platforms' native meaning of a zero
+    // SO_RCVTIMEO — block forever — is never what this client wants.
+    const bool busy_poll = (timeout_ms == 0);
 #ifdef _WIN32
+    u_long nonblocking = busy_poll ? 1 : 0;
+    (void)::ioctlsocket(fd_, FIONBIO, &nonblocking);
+    if (busy_poll) {
+        return;
+    }
     // Windows takes the timeout as a DWORD of milliseconds.
     auto ms = static_cast<DWORD>(timeout_ms);
     (void)::setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&ms),
@@ -189,12 +218,27 @@ void TcpSocket::set_read_timeout(int timeout_ms) noexcept {
     (void)::setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&ms),
                        static_cast<SockLen>(sizeof(ms)));
 #else
+    const int flags = ::fcntl(fd_, F_GETFL, 0);
+    if (flags >= 0) {
+        (void)::fcntl(fd_, F_SETFL, busy_poll ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK));
+    }
+    if (busy_poll) {
+        return;
+    }
     ::timeval tv{};
     tv.tv_sec = timeout_ms / 1000;
     tv.tv_usec = static_cast<decltype(tv.tv_usec)>((timeout_ms % 1000) * 1000);
     (void)::setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, static_cast<SockLen>(sizeof(tv)));
     (void)::setsockopt(fd_, SOL_SOCKET, SO_SNDTIMEO, &tv, static_cast<SockLen>(sizeof(tv)));
 #endif
+}
+
+std::int64_t TcpSocket::last_rx_time_ns() const noexcept {
+    // Populated by the Linux recvmsg path; permanently 0 on Windows and macOS,
+    // where no per-segment TCP receive clock exists worth pretending about —
+    // the measurement starts in user space there, and saying so beats
+    // fabricating a number.
+    return last_rx_ns_;
 }
 
 IoStatus TcpSocket::read(char* buf, std::size_t len, std::size_t& n_read, std::string& error) {
@@ -205,6 +249,38 @@ IoStatus TcpSocket::read(char* buf, std::size_t len, std::size_t& n_read, std::s
 
 #ifdef _WIN32
     const int got = ::recv(fd_, buf, static_cast<int>(len), 0);
+#elif defined(__linux__)
+    // recvmsg rather than recv, because the kernel's arrival timestamp for a
+    // TCP socket exists ONLY as a control message riding the read that
+    // delivers the data. The SIOCGSTAMP query-after-the-fact ioctl is not
+    // supported for SOCK_STREAM, a fact this file learned empirically.
+    ::iovec iov{};
+    iov.iov_base = buf;
+    iov.iov_len = len;
+    union {
+        ::cmsghdr align;
+        char raw[CMSG_SPACE(3 * sizeof(::timespec))];  // SCM_TIMESTAMPING is timespec[3].
+    } ctrl{};
+    ::msghdr msg{};
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = ctrl.raw;
+    msg.msg_controllen = sizeof(ctrl.raw);
+    const auto got = ::recvmsg(fd_, &msg, 0);
+    if (got > 0) {
+        for (::cmsghdr* c = CMSG_FIRSTHDR(&msg); c != nullptr; c = CMSG_NXTHDR(&msg, c)) {
+            if (c->cmsg_level == SOL_SOCKET && c->cmsg_type == SCM_TIMESTAMPING) {
+                // timespec[3]: software, deprecated, hardware. Software is the
+                // one a plain NIC fills.
+                ::timespec ts[3]{};
+                std::memcpy(&ts, CMSG_DATA(c), sizeof(ts));
+                if (ts[0].tv_sec != 0 || ts[0].tv_nsec != 0) {
+                    last_rx_ns_ = static_cast<std::int64_t>(ts[0].tv_sec) * 1'000'000'000 +
+                                  static_cast<std::int64_t>(ts[0].tv_nsec);
+                }
+            }
+        }
+    }
 #else
     const auto got = ::recv(fd_, buf, len, 0);
 #endif

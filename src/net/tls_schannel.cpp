@@ -51,6 +51,7 @@
 #include <sspi.h>
 // clang-format on
 
+#include "crossbook/net/byte_buffer.hpp"
 #include "crossbook/net/transport.hpp"
 #include "tcp_socket.hpp"
 #include "tls_backend.hpp"
@@ -176,12 +177,8 @@ public:
             // the tail of the handshake often arrives with application data
             // behind it in the same segment.
             if (!enc_.empty()) {
-                const IoStatus status = decrypt_buffered();
+                const IoStatus status = decrypt_buffered(buf, len, n_read);
                 if (status == IoStatus::kOk) {
-                    const std::size_t take = (std::min)(len, plain_.size());
-                    std::memcpy(buf, plain_.data(), take);
-                    plain_pos_ = take;
-                    n_read = take;
                     return IoStatus::kOk;
                 }
                 if (status != IoStatus::kTimeout) {
@@ -264,6 +261,10 @@ public:
     }
 
     void set_read_timeout(int timeout_ms) override { socket_.set_read_timeout(timeout_ms); }
+
+    [[nodiscard]] std::int64_t last_rx_time_ns() const noexcept override {
+        return socket_.last_rx_time_ns();
+    }
 
     void close() override {
         if (have_ctx_) {
@@ -440,11 +441,17 @@ private:
         enc_.resize(count);
     }
 
-    /// Decrypt one record out of `enc_` into `plain_`.
+    /// Decrypt one record out of `enc_`, straight into the caller's buffer.
+    ///
+    /// DecryptMessage already decrypts in place inside `enc_`, so the only
+    /// copy this path needs is the one into `dst`. Plaintext beyond `len`
+    /// goes to `plain_` for the next call to serve; with a 16 KiB TLS record
+    /// ceiling and the frame reader asking for 32 KiB chunks, that overflow
+    /// path is reachable only for callers reading less than a record.
     ///
     /// Returns kTimeout to mean "incomplete record, read more" — the caller's
     /// loop treats it as such, and no other status can express it.
-    [[nodiscard]] IoStatus decrypt_buffered() {
+    [[nodiscard]] IoStatus decrypt_buffered(char* dst, std::size_t len, std::size_t& n_read) {
         SecBuffer buffers[4]{};
         buffers[0].BufferType = SECBUFFER_DATA;
         buffers[0].cbBuffer = static_cast<unsigned long>(enc_.size());
@@ -490,23 +497,38 @@ private:
             return IoStatus::kError;
         }
 
+        // Copy plaintext out BEFORE touching the ciphertext buffer: both the
+        // data span and the extra span point into `enc_` itself, and
+        // `take_extra`'s memmove overwrites the front of it.
+        std::size_t produced = 0;
         const SecBuffer* data = find_buffer(buffers, SECBUFFER_DATA);
         if (data != nullptr && data->cbBuffer != 0) {
             const char* p = static_cast<const char*>(data->pvBuffer);
-            plain_.assign(p, p + data->cbBuffer);
+            const std::size_t cb = data->cbBuffer;
+            produced = (std::min)(len, cb);
+            std::memcpy(dst, p, produced);
+            if (cb > produced) {
+                plain_.assign(p + produced, p + cb);
+                plain_pos_ = 0;
+            }
         }
 
+        // take_extra memmoves the unconsumed tail to the front of `enc_` in
+        // place — a fresh vector per pipelined record was an allocation on
+        // the common path, since a busy feed routinely lands the next record
+        // behind the current one in the same segment.
         const SecBuffer* extra = find_buffer(buffers, SECBUFFER_EXTRA);
-        if (extra != nullptr && extra->cbBuffer != 0) {
-            // Copy before shrinking: the extra span points into `enc_` itself.
-            std::vector<char> rest(static_cast<const char*>(extra->pvBuffer),
-                                   static_cast<const char*>(extra->pvBuffer) + extra->cbBuffer);
-            enc_.swap(rest);
+        if (extra != nullptr) {
+            take_extra(*extra);
         } else {
             enc_.clear();
         }
 
-        return plain_.empty() ? IoStatus::kTimeout : IoStatus::kOk;
+        if (produced == 0) {
+            return IoStatus::kTimeout;  // A record with no app data; loop.
+        }
+        n_read = produced;
+        return IoStatus::kOk;
     }
 
     /// First buffer of a given type, skipping the one we handed in as input.
@@ -525,7 +547,10 @@ private:
     CtxtHandle ctx_{};
     SecPkgContext_StreamSizes sizes_{};
     std::string target_name_;
-    std::vector<char> enc_;
+    // ByteBuffer, not std::vector<char>: the read loops grow this by a 32 KiB
+    // chunk per socket read and trim it back to what arrived, and a
+    // value-initializing resize would memset the chunk every time.
+    ByteBuffer enc_;
     std::vector<char> plain_;
     std::vector<char> send_buf_;
     std::string error_;
