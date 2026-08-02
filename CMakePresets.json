@@ -34,8 +34,16 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CROSSBOOK_BUILD_TESTS": "ON",
-        "CROSSBOOK_BUILD_BENCH": "ON",
         "CROSSBOOK_BUILD_EXAMPLES": "ON"
+      }
+    },
+    {
+      "name": "bench",
+      "inherits": "release",
+      "displayName": "Release + benchmarks",
+      "description": "Pulls Google Benchmark from GitHub on first configure, which is why it is not the release preset: the README's first build command should not reach the network, and on a locked-down desk it would fail there.",
+      "cacheVariables": {
+        "CROSSBOOK_BUILD_BENCH": "ON"
       }
     },
     {
@@ -94,6 +102,7 @@
   "buildPresets": [
     { "name": "debug", "configurePreset": "debug" },
     { "name": "release", "configurePreset": "release" },
+    { "name": "bench", "configurePreset": "bench" },
     { "name": "asan", "configurePreset": "asan" },
     { "name": "tsan", "configurePreset": "tsan" },
     { "name": "fuzz", "configurePreset": "fuzz" }

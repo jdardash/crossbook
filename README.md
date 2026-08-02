@@ -30,8 +30,9 @@ Kraken at all. cryptofeed's own docs explain why they are opt-in: **10 to 100
 microseconds per update.**
 
 So the claim here is not that verification is novel. It is that verification
-should not be a flag, and it only stops being one when it costs 506 ns instead
-of 50 µs — which is a consequence of the fixed-point decision below, not of
+should not be a flag, and it only stops being one when it costs a few hundred
+nanoseconds instead of tens of microseconds — which is a consequence of the
+fixed-point decision below, not of
 being clever. What each venue hands you:
 
 | Venue | Ground truth | Public? |
@@ -190,51 +191,86 @@ Measured, with the methodology stated, because a number without one is noise.
 
 **Book update — the path every message takes:**
 
-| Spread from touch | `std::map` | tick-indexed array | speedup |
+| Spread from touch | `std::map` | tick-indexed array | overflow |
 |---|---|---|---|
-| 8 ticks (tight book) | 76.7 ns | **9.07 ns** | 8.5x |
-| 200 ticks | 69.8 ns | **10.6 ns** | 6.6x |
-| 5000 ticks (wide) | 136 ns | **11.2 ns** | 12.1x |
+| 8 ticks (tight book) | 58.5 ns | **8.23 ns** | 0 |
+| 200 ticks | 68.7 ns | **8.02 ns** | 0 |
+| 5000 ticks (wide) | 115 ns | **8.55 ns** | 0 |
+| 40000 ticks (window defeated) | 148 ns | **17.9 ns** | 3167 |
+
+The last row is the one worth having. Everything below 65,536 ticks fits the
+price window and is the array's home turf; past that the book spills into an
+overflow container and re-anchors. That row used to read **25,000 ns** — a
+rebuild with a heap allocation on *every* update, 184x slower than the
+`std::map` it exists to beat, sitting immediately past the widest case anything
+benchmarked. It is in the table now precisely because the table is what let it
+hide.
 
 **Reads — where the array does *not* win:**
 
-| Operation | `std::map` | tick-indexed array |
-|---|---|---|
-| best bid + best ask | **1.33 ns** | 2.67 ns |
-| top 10 levels | **65.1 ns** | 72.1 ns |
-| Kraken checksum (whole book) | 523 ns | 506 ns |
+Per call, on a book of 200 levels per side. `gap` is the tick distance between
+adjacent levels: real Kraken BTC/USD at a 0.1 tick has levels every $0.50-$10,
+so gap 1 is not a realistic book and is shown only as the best case.
 
-The array is decisively better on writes and roughly at parity or slightly
-behind on reads. For a feed handler that is the right trade — every message is a
-write, while reads happen once per decision — but it is not a clean sweep and is
-not presented as one.
+| Operation | | `std::map` | tick-indexed array |
+|---|---|---|---|
+| best bid + best ask | gap 1 | **1.33 ns** | 1.36 ns |
+| | gap 100 | **1.30 ns** | 1.43 ns |
+| top 10 levels | gap 1 | 61 ns | **59 ns** |
+| | gap 100 | **61 ns** | 610 ns |
+| Kraken checksum | gap 1 | 451 ns | **411 ns** |
+| | gap 100 | **459 ns** | 1326 ns |
 
-Checksum cost is independent of book depth (only 10 levels per side are ever
-read) and allocation-free, so verifying every update costs well under a
-microsecond.
+`std::map` is completely insensitive to sparsity. The array is not: it scans
+empty slots, so at a realistic gap it is **3.2x slower on the checksum and 8.2x
+slower on `top(10)`**. Earlier versions of this table published only the gap-1
+row, which is the array's best case presented as its typical one.
 
-**What the 8.5x is actually for.** It is not the headline it looks like, and
-pretending otherwise invites the obvious question. Across a whole Kraken frame:
+The touch read is a genuine tie. The previous table claimed `1.33 ns` against
+`2.67 ns` and conceded a 2x read loss — that was two different units compared
+against each other, one of them measured with the work hoisted out of the loop
+by an incorrect `DoNotOptimize`. Fixing the benchmark removed the loss.
+
+**What the write speedup is actually for.** Across a whole Kraken frame,
+measured end to end:
 
 | Stage | ns | share |
 |---|---|---|
-| JSON decode | ~960 | 65% |
-| Kraken checksum | ~500 | 34% |
-| book update | ~18 | **1.4%** |
+| JSON decode, verify, ingest guards | ~2400 | 89% |
+| Kraken checksum | ~420 | 16% |
+| book update | ~8 | **0.3%** |
 
-So swapping the tick-indexed array back for a `std::map` would cost roughly
-**9% end to end**, not 8.5x. The array's speedup is not what makes the library
-fast — decode dominates, and that is where the remaining work is. What the
-speedup buys is *headroom*: it is why verifying **every** update is affordable
-instead of sampled, which is the trade this library exists to make and the one
-the handlers cited at the top declined. A book update that cost 77 ns instead of
-9 ns would not be slow; it would just make the 506 ns checksum harder to justify
-on every message.
+(The stages overlap slightly — each is cheaper in isolation than in sequence,
+because measured alone it gets a warmer cache. `BM_ApplyThenChecksum` exists to
+show that: `apply` costs ~27 ns when the checksum immediately reads memory it
+just dirtied, versus ~8 ns measured on its own.)
+
+So swapping the tick-indexed array back for a `std::map` costs a few percent
+end to end, not 8.5x. The array's speedup is not what makes the library fast —
+decode dominates, and that is where the remaining work is. What the speedup
+buys is *headroom*: it is why verifying **every** update is affordable rather
+than sampled, which is the trade this library exists to make and the one the
+handlers cited at the top declined.
+
+Decode is also *deliberately* slower than it was. Each frame now validates its
+scalars against RFC 8259, checks the symbol it is routed to, parses the venue
+timestamp so staleness detection can exist at all, and byte-compares every
+price and quantity against its canonical spelling at the instrument's scale.
+Those are the checks that make the rest of this README true; they cost about
+40% of decode and they are not optional. Making decode fast again means a
+single-pass scanner, not removing them.
 
 **Methodology.** Median of 7 repetitions, Google Benchmark, MSVC 19.50 `/O2`,
-Windows 11, 16 logical cores @ 2995 MHz. Standard deviation was under 5% of
-median except where noted in the raw output. Reproduce with
-`cmake --preset release && ./build/release/bench/crossbook_bench --benchmark_repetitions=7`.
+Windows 11, 16 logical cores @ 2995 MHz, on an untuned laptop that was not
+otherwise idle. Read the ratios within a table, not the absolute nanoseconds
+across tables. Reproduce with
+`cmake --preset bench && ./build/bench/bench/crossbook_bench --benchmark_repetitions=7`.
+
+One methodology note that cost real time to learn: **do not run the whole suite
+in one process.** The 40,000-tick row does sustained window rebuilds for tens of
+seconds and thermally throttles everything scheduled after it — the same binary
+measured the touch read at 12.0 ns in-suite and 3.1 ns run alone. Every figure
+above comes from a per-family run.
 
 **What these numbers are not.** These are *throughput* microbenchmarks — mean
 time per operation, warm cache, tight loop. They are **not latency
