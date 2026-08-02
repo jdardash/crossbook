@@ -47,14 +47,16 @@ public:
         listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
         ::sockaddr_in addr{};
         addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
+        // No `::` on htonl/ntohs: macOS defines them as macros, and a scope
+        // qualifier in front of a macro is a parse error.
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         addr.sin_port = 0;  // Any free port.
         (void)::bind(listen_fd_, reinterpret_cast<::sockaddr*>(&addr),
                      static_cast<detail::SockLen>(sizeof(addr)));
         (void)::listen(listen_fd_, 1);
         detail::SockLen len = static_cast<detail::SockLen>(sizeof(addr));
         (void)::getsockname(listen_fd_, reinterpret_cast<::sockaddr*>(&addr), &len);
-        port_ = ::ntohs(addr.sin_port);
+        port_ = ntohs(addr.sin_port);
     }
 
     ~LoopbackListener() {

@@ -198,8 +198,8 @@ private:
         return true;
     }
 
-    [[nodiscard]] bool decode_group(std::uint16_t stride, std::uint32_t count, std::int8_t price_exp,
-                                    std::int8_t qty_exp, Side side) {
+    [[nodiscard]] bool decode_group(std::uint16_t stride, std::uint32_t count,
+                                    std::int8_t price_exp, std::int8_t qty_exp, Side side) {
         cursor_ += 4;  // The dimensions peek_group already validated.
         for (std::uint32_t i = 0; i < count; ++i) {
             std::int64_t price_mantissa = 0;
