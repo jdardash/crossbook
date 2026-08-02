@@ -21,6 +21,19 @@
 #include <string_view>
 #include <vector>
 
+// Platform headers live HERE, in the tool, not in the library. Pinning a core
+// and raising priority are the difference between measuring a feed handler and
+// measuring the OS scheduler, but they are an application's business: the
+// library stays header-only and free of <windows.h>.
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#elif defined(__linux__)
+#include <pthread.h>
+#include <sched.h>
+#endif
+
 #include "crossbook/capture.hpp"
 #include "crossbook/feed.hpp"
 #include "crossbook/replay.hpp"
@@ -39,6 +52,8 @@ struct Options {
     std::size_t depth = 0;
     bool latency = false;
     double speed = 1.0;
+    int pin_core = -1;
+    bool realtime = false;
 };
 
 void usage() {
@@ -52,6 +67,8 @@ void usage() {
         "  --show N          divergences to print         (default 20)\n"
         "  --latency         also run an open-loop replay and report percentiles\n"
         "  --speed X         replay speed multiplier for --latency (default 1.0)\n"
+        "  --pin N           pin to one CPU core, so migration is not read as latency\n"
+        "  --realtime        raise priority for the measurement\n"
         "\n"
         "Produce a capture with: python tools/capture_kraken.py");
 }
@@ -84,6 +101,12 @@ void usage() {
             const char* v = next();
             if (v == nullptr) return false;
             out.depth = static_cast<std::size_t>(std::atoi(v));
+        } else if (arg == "--pin") {
+            const char* v = next();
+            if (v == nullptr) return false;
+            out.pin_core = std::atoi(v);
+        } else if (arg == "--realtime") {
+            out.realtime = true;
         } else if (arg == "--latency") {
             out.latency = true;
         } else if (arg == "--speed") {
@@ -96,6 +119,51 @@ void usage() {
         }
     }
     return true;
+}
+
+/// Pin this thread to one core.
+///
+/// Without it the scheduler may migrate the replay mid-run, and the cold caches
+/// on the new core land in the histogram as latency the book never caused.
+/// Returns false when unsupported, so the caller reports the real conditions
+/// rather than silently claiming ones it did not get.
+[[nodiscard]] bool pin_to_core(int core) {
+#if defined(_WIN32)
+    const DWORD_PTR mask = static_cast<DWORD_PTR>(1) << core;
+    return SetThreadAffinityMask(GetCurrentThread(), mask) != 0;
+#elif defined(__linux__)
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    CPU_SET(static_cast<std::size_t>(core), &set);
+    return pthread_setaffinity_np(pthread_self(), sizeof(set), &set) == 0;
+#else
+    (void)core;
+    return false;  // macOS exposes only advisory affinity hints.
+#endif
+}
+
+/// Raise scheduling priority for the measurement.
+///
+/// This does not make the code faster. It reduces the chance that an unrelated
+/// process preempts the replay and drops a multi-millisecond outlier into the
+/// tail — an outlier that is real, but describes the machine rather than the
+/// library.
+[[nodiscard]] bool raise_priority() {
+#if defined(_WIN32)
+    // HIGH rather than REALTIME on purpose: real-time priority on Windows can
+    // starve input handling and the kernel, which is a hostile thing for a
+    // benchmark to do to the machine running it.
+    const bool process_ok = SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS) != 0;
+    const bool thread_ok = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST) != 0;
+    return process_ok && thread_ok;
+#elif defined(__linux__)
+    sched_param param{};
+    param.sched_priority = 10;
+    // Needs CAP_SYS_NICE; failing is normal unprivileged and is reported, not fatal.
+    return sched_setscheduler(0, SCHED_FIFO, &param) == 0;
+#else
+    return false;
+#endif
 }
 
 /// Escape and clip a payload so a divergence line stays readable.
@@ -241,6 +309,23 @@ int main(int argc, char** argv) {
         // verification should run as fast as the disk allows, while latency
         // needs the original arrival timing.
         std::puts("\nlatency (open-loop, measured against the recorded schedule)");
+
+        // Report the conditions next to the numbers. A latency figure whose
+        // measurement conditions are unstated is not a measurement, and a
+        // pinning call that silently failed would make the stated conditions a
+        // lie rather than merely absent.
+        if (options.pin_core >= 0) {
+            std::printf("  core     %s %d\n",
+                        pin_to_core(options.pin_core) ? "pinned to" : "PIN FAILED for",
+                        options.pin_core);
+        } else {
+            std::puts("  core     not pinned (pass --pin N)");
+        }
+        if (options.realtime) {
+            std::printf("  priority %s\n", raise_priority() ? "raised" : "RAISE FAILED, normal");
+        } else {
+            std::puts("  priority normal (pass --realtime)");
+        }
 
         KrakenFeed timed("kraken",
                          venues::KrakenBookDecoder(InstrumentSpec{
