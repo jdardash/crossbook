@@ -97,11 +97,67 @@ TEST_CASE("format_fixed round-trips", "[fixed]") {
     CHECK(format_fixed(150, 0) == "150");
 }
 
-TEST_CASE("round_trips validates wire representation against a scale", "[fixed]") {
-    CHECK(round_trips("45285.2", 1));
-    CHECK(round_trips("0.00100000", 8));
-    CHECK_FALSE(round_trips("1.005", 2));
-    CHECK_FALSE(round_trips("garbage", 2));
+TEST_CASE("is_canonical_at_scale validates wire spelling against a scale", "[fixed]") {
+    CHECK(is_canonical_at_scale("45285.2", 1));
+    CHECK(is_canonical_at_scale("0.00100000", 8));
+    CHECK_FALSE(is_canonical_at_scale("1.005", 2));
+    CHECK_FALSE(is_canonical_at_scale("garbage", 2));
+}
+
+TEST_CASE("is_canonical_at_scale catches missing trailing zeros", "[fixed][checksum]") {
+    // THE CASE THE PREDICATE EXISTS FOR, and the one its predecessor could not
+    // see. `round_trips` parsed, re-formatted, re-parsed and compared MANTISSAS
+    // — an identity for anything that parses at all — so it returned true for
+    // every input below and could only ever restate what parse_fixed had already
+    // said. Missing trailing zeros are exactly what breaks Kraken's checksum
+    // identity, and they parse perfectly.
+    CHECK_FALSE(is_canonical_at_scale("0.5", 8));       // wire "5" vs mantissa "50000000"
+    CHECK_FALSE(is_canonical_at_scale("45285.20", 1));  // one decimal too many, still exact
+    CHECK_FALSE(is_canonical_at_scale("1", 2));         // no fraction where the scale needs two
+    CHECK_FALSE(is_canonical_at_scale("1.00", 0));      // a fraction where the scale allows none
+    CHECK_FALSE(is_canonical_at_scale("01.50", 2));     // leading zero: not what format_fixed emits
+    CHECK_FALSE(is_canonical_at_scale("1.5e1", 1));     // exponent form parses; is not canonical
+
+    // All of the above parse exactly. That is precisely why a numeric
+    // comparison cannot distinguish them from the canonical spelling.
+    CHECK(parse_fixed("0.5", 8).ok());
+    CHECK(parse_fixed("45285.20", 1).ok());
+    CHECK(parse_fixed("1", 2).ok());
+    CHECK(parse_fixed("1.00", 0).ok());
+    CHECK(parse_fixed("01.50", 2).ok());
+    CHECK(parse_fixed("1.5e1", 1).ok());
+
+    // And the canonical spellings of the same values are accepted, so the
+    // predicate is not simply rejecting everything.
+    CHECK(is_canonical_at_scale("0.50000000", 8));
+    CHECK(is_canonical_at_scale("45285.2", 1));
+    CHECK(is_canonical_at_scale("1.00", 2));
+    CHECK(is_canonical_at_scale("1", 0));
+    CHECK(is_canonical_at_scale("15.0", 1));
+
+    // A leading '+' carries no information and JSON permits it.
+    CHECK(is_canonical_at_scale("+1.50", 2));
+    CHECK(is_canonical_at_scale("-1.50", 2));
+}
+
+TEST_CASE("is_canonical_at_scale agrees with format_fixed by construction", "[fixed]") {
+    // The predicate and the formatter must not be able to drift apart: whatever
+    // format_fixed emits for a mantissa is the definition of canonical for it.
+    for (std::int64_t mantissa : {std::int64_t{0}, std::int64_t{1}, std::int64_t{-1},
+                                  std::int64_t{150}, std::int64_t{-150}, std::int64_t{100000},
+                                  std::int64_t{9223372036854775807LL}}) {
+        for (Scale scale : {Scale{0}, Scale{1}, Scale{2}, Scale{8}, Scale{18}}) {
+            const std::string canonical = format_fixed(mantissa, scale);
+            INFO("mantissa=" << mantissa << " scale=" << static_cast<int>(scale) << " -> "
+                             << canonical);
+            // Scale 18 overflows the reparse for large mantissas; skip those,
+            // since an unrepresentable value is not a spelling question.
+            if (!parse_fixed(canonical, scale).ok()) {
+                continue;
+            }
+            CHECK(is_canonical_at_scale(canonical, scale));
+        }
+    }
 }
 
 // -------------------------------------------------------------------------
@@ -149,7 +205,7 @@ TEST_CASE("checksum_token matches Kraken's documented transformation", "[fixed][
 
     for (const Case& c : cases) {
         INFO("decimal=" << c.decimal << " scale=" << static_cast<int>(c.scale));
-        REQUIRE(round_trips(c.decimal, c.scale));  // Precondition holds.
+        REQUIRE(is_canonical_at_scale(c.decimal, c.scale));  // Precondition holds.
         const ParseResult parsed = parse_fixed(c.decimal, c.scale);
         REQUIRE(parsed.ok());
         CHECK(checksum_token(parsed.mantissa) == kraken_transform(c.decimal));
@@ -172,7 +228,8 @@ TEST_CASE("the checksum-token identity requires canonical wire spelling",
     // numerically perfect.
     //
     // This test pins the boundary so the assumption is visible rather than
-    // buried, and `round_trips()` is what detects a violation at ingest.
+    // buried, and `is_canonical_at_scale()` is what detects a violation at
+    // ingest — both decoders call it on every level they read.
 
     auto wire_transform = [](std::string_view decimal) {
         std::string s;
@@ -186,12 +243,12 @@ TEST_CASE("the checksum-token identity requires canonical wire spelling",
     };
 
     SECTION("canonical spelling: identity holds") {
-        REQUIRE(round_trips("0.50000000", 8));
+        REQUIRE(is_canonical_at_scale("0.50000000", 8));
         CHECK(checksum_token(parse_fixed("0.50000000", 8).mantissa) ==
               wire_transform("0.50000000"));
     }
 
-    SECTION("non-canonical spelling: identity breaks, and round_trips flags it") {
+    SECTION("non-canonical spelling: identity breaks, and the guard flags it") {
         // "0.5" is a perfectly valid number and parses exactly; what it is not
         // is the canonical scale-8 spelling, so it must not be trusted for a
         // checksum.
@@ -201,7 +258,11 @@ TEST_CASE("the checksum-token identity requires canonical wire spelling",
         CHECK(wire_transform("0.5") == "5");
         CHECK(checksum_token(parsed.mantissa) != wire_transform("0.5"));
 
-        // The guard: canonical form differs from what arrived on the wire.
+        // THE GUARD ITSELF. This section previously asserted only that
+        // format_fixed produced something different from the wire text, and
+        // never called the predicate named in its own title — so the predicate
+        // could be, and was, incapable of returning false here.
+        CHECK_FALSE(is_canonical_at_scale("0.5", 8));
         CHECK(format_fixed(parsed.mantissa, 8) != std::string("0.5"));
     }
 }

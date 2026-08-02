@@ -39,7 +39,16 @@ enum class DivergenceKind : std::uint8_t {
     /// No update for longer than the staleness threshold; the feed is silent
     /// and the book can no longer be trusted to be current.
     kStaleFeed,
+    /// The venue itself reported an error — a rejected subscription, an unknown
+    /// pair, a rate limit. Recorded because a subscription that never succeeds
+    /// is otherwise indistinguishable from a quiet market: no frames arrive,
+    /// nothing is logged, and the feed simply never syncs.
+    kVenueError,
 };
+
+/// Number of DivergenceKind values. Kept adjacent to the enum so the counter
+/// array below cannot fall behind a newly added kind.
+inline constexpr std::size_t kDivergenceKindCount = 6;
 
 [[nodiscard]] constexpr std::string_view to_string(DivergenceKind k) noexcept {
     switch (k) {
@@ -53,6 +62,8 @@ enum class DivergenceKind : std::uint8_t {
             return "malformed_message";
         case DivergenceKind::kStaleFeed:
             return "stale_feed";
+        case DivergenceKind::kVenueError:
+            return "venue_error";
     }
     return "unknown";
 }
@@ -108,8 +119,20 @@ public:
     /// Verified updates as a fraction of all checked updates. Returns 1.0 when
     /// nothing has been checked yet, which callers must not mistake for
     /// evidence — `verified()` being zero is the thing to test.
+    ///
+    /// THE DENOMINATOR IS DELIBERATELY NARROW.
+    ///
+    /// Only updates that were actually compared against the exchange belong in
+    /// it: the ones that matched, plus the ones that did not. Dividing by
+    /// `total_recorded_` instead swept in malformed frames, sequence gaps,
+    /// precision changes and stale-feed markers — none of which are the exchange
+    /// disagreeing with us. One verified snapshot followed by nine junk frames
+    /// then published a match rate of 0.10 with zero checksum mismatches, which
+    /// reads as 90% disagreement with the venue when everything compared agreed.
+    /// The other kinds are not lost; they are counted by `count()` and listed in
+    /// `entries()`, which is where a caller looks for them.
     [[nodiscard]] double match_rate() const noexcept {
-        const std::uint64_t total = verified_ + total_recorded_;
+        const std::uint64_t total = verified_ + count(DivergenceKind::kChecksumMismatch);
         return total == 0 ? 1.0 : static_cast<double>(verified_) / static_cast<double>(total);
     }
 
@@ -126,7 +149,7 @@ public:
 private:
     std::size_t capacity_;
     std::vector<Divergence> entries_;
-    std::array<std::uint64_t, 5> counts_{};
+    std::array<std::uint64_t, kDivergenceKindCount> counts_{};
     std::uint64_t verified_{0};
     std::uint64_t total_recorded_{0};
     std::uint64_t dropped_{0};

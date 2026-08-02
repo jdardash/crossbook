@@ -49,7 +49,8 @@ enum class FeedStatus : std::uint8_t {
     /// The book cannot be trusted. Resubscribe or refetch a snapshot, then feed
     /// it in via `apply_snapshot`. Do not read the book until then.
     kNeedsSnapshot,
-    /// The frame could not be decoded. Logged; the book is untouched.
+    /// The frame could not be decoded, or the venue reported an error. Logged;
+    /// the book is untouched.
     kRejected,
 };
 
@@ -77,6 +78,11 @@ struct FeedStats {
     std::uint64_t snapshots_applied{0};
     std::uint64_t checksums_verified{0};
     std::uint64_t checksum_mismatches{0};
+    /// Frames in which the venue reported an error of its own — a rejected
+    /// subscription, an unknown pair, a rate limit. Distinct from `rejected`,
+    /// which also counts frames we could not decode: this one means the venue
+    /// understood us and said no.
+    std::uint64_t venue_errors{0};
     /// Levels dropped for falling outside a depth-limited subscription. A
     /// steady trickle is normal and expected; zero on a depth-limited feed
     /// means the depth was never configured, which is worth being able to see.
@@ -127,12 +133,17 @@ public:
 
         if (!msg.ok()) {
             ++stats_.rejected;
-            log_.record(Divergence{msg.error == DecodeError::kPrecisionLoss
-                                       ? DivergenceKind::kPrecisionLoss
-                                       : DivergenceKind::kMalformedMessage,
-                                   venue_, std::string(msg.symbol), msg.ts, msg.ids.final_id, 0, 0,
-                                   std::string(msg.bad_token.empty() ? to_string(msg.error)
-                                                                     : msg.bad_token)});
+            // kNonCanonical joins kPrecisionLoss under the same divergence kind:
+            // both mean the venue's decimal spelling no longer matches the scale
+            // this instrument was configured with, and both must surface with
+            // the offending token attached rather than as a generic malformed
+            // frame. What differs is only whether the value was representable.
+            const bool spelling =
+                msg.error == DecodeError::kPrecisionLoss || msg.error == DecodeError::kNonCanonical;
+            log_.record(Divergence{
+                spelling ? DivergenceKind::kPrecisionLoss : DivergenceKind::kMalformedMessage,
+                venue_, std::string(msg.symbol), msg.ts, msg.ids.final_id, 0, 0,
+                std::string(msg.bad_token.empty() ? to_string(msg.error) : msg.bad_token)});
             // A malformed frame says nothing about whether the book is still
             // correct, so sync is left alone. A precision change does, and the
             // divergence log is what surfaces it.
@@ -141,9 +152,22 @@ public:
 
         switch (msg.kind) {
             case MessageKind::kIgnored:
-            case MessageKind::kVenueError:
                 ++stats_.ignored;
                 return FeedStatus::kIgnored;
+            case MessageKind::kVenueError:
+                // Counting this as "ignored" made a rejected subscription look
+                // exactly like a heartbeat, and a feed that never syncs because
+                // the pair name was wrong then presents as a quiet market with
+                // nothing in the log to say otherwise. Record it, so the reason
+                // is on the record the moment it happens.
+                ++stats_.venue_errors;
+                ++stats_.rejected;
+                log_.record(Divergence{DivergenceKind::kVenueError, venue_,
+                                       std::string(book_.spec().symbol), msg.ts, msg.ids.final_id,
+                                       0, 0,
+                                       std::string(msg.bad_token.empty() ? "venue reported an error"
+                                                                        : msg.bad_token)});
+                return FeedStatus::kRejected;
             case MessageKind::kSnapshot:
                 return apply_snapshot_message(msg);
             case MessageKind::kUpdate:
