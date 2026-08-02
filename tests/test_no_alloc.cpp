@@ -20,9 +20,15 @@
 #include <new>
 #include <vector>
 
+#include <cstring>
+#include <string>
+
 #include "crossbook/book.hpp"
 #include "crossbook/checksum.hpp"
+#include "crossbook/feed.hpp"
+#include "crossbook/net/ws_frame.hpp"
 #include "crossbook/sequence.hpp"
+#include "crossbook/venues/kraken.hpp"
 
 // ---------------------------------------------------------------------------
 // Allocation probe
@@ -310,6 +316,138 @@ TEST_CASE("book queries do not allocate", "[alloc][book]") {
     }
     CHECK(observed == 0);
     CHECK(sink != 0);
+}
+
+TEST_CASE("Kraken decode does not allocate in steady state", "[alloc][decode]") {
+    // Decode is ~75% of the frame cost, and until this test existed it was
+    // exactly the part of "no allocation on the hot path" that nothing
+    // enforced. The book tests above guard 0.3% of the frame.
+    venues::KrakenBookDecoder decoder(InstrumentSpec{"BTC/USD", 1, 8});
+    const std::string frame =
+        R"({"channel":"book","type":"update","data":[{"symbol":"BTC/USD",)"
+        R"("bids":[{"price":45283.5,"qty":0.50000000},{"price":45283.4,"qty":1.25000000}],)"
+        R"("asks":[{"price":45283.6,"qty":0.30000000},{"price":45283.7,"qty":2.00000000}],)"
+        R"("checksum":1234567890,"timestamp":"2026-07-31T12:00:00.000000Z"}]})";
+
+    // Warm-up outside the guard: the decoder's level vector is reserved at
+    // construction, but steady state is what the claim is about.
+    for (int i = 0; i < 100; ++i) {
+        REQUIRE(decoder.decode(frame).ok());
+    }
+
+    std::uint64_t observed = 0;
+    std::uint64_t sink = 0;
+    {
+        alloc_probe::Guard guard;
+        for (int i = 0; i < 10'000; ++i) {
+            const DecodedMessage& msg = decoder.decode(frame);
+            sink += msg.levels.size();
+        }
+        observed = alloc_probe::Guard::count();
+    }
+    CHECK(observed == 0);
+    CHECK(sink == 40'000);  // Every decode saw all four levels.
+}
+
+TEST_CASE("Feed::handle does not allocate on the applied path", "[alloc][feed]") {
+    // The full frame: decode, guards, sequence, book update, checksum verify.
+    // The rejection paths allocate deliberately (Divergence carries strings);
+    // the applied path must not.
+    using KrakenFeed = Feed<venues::KrakenBookDecoder, ArrayBook>;
+    KrakenFeed feed("kraken", venues::KrakenBookDecoder(InstrumentSpec{"BTC/USD", 1, 8}),
+                    SequencePolicy::kStrictIncrement);
+
+    // The checksum Kraken would publish for this two-level book.
+    ArrayBook reference(InstrumentSpec{"BTC/USD", 1, 8});
+    reference.apply(Side::kAsk, Price{452836}, Qty{30'000'000});
+    reference.apply(Side::kBid, Price{452835}, Qty{50'000'000});
+    const std::uint32_t crc = kraken_checksum(reference);
+
+    const std::string snapshot =
+        std::string(R"({"channel":"book","type":"snapshot","data":[{"symbol":"BTC/USD",)") +
+        R"("asks":[{"price":45283.6,"qty":0.30000000}],)" +
+        R"("bids":[{"price":45283.5,"qty":0.50000000}],)" + R"("checksum":)" +
+        std::to_string(crc) + R"(,"timestamp":"2026-07-31T12:00:00.000000Z")" + "}]}";
+    REQUIRE(feed.handle(snapshot) == FeedStatus::kApplied);
+
+    // An update that re-states the same levels leaves the book unchanged, so
+    // the same checksum stays correct on every iteration and the verify path
+    // runs armed.
+    const std::string update =
+        std::string(R"({"channel":"book","type":"update","data":[{"symbol":"BTC/USD",)") +
+        R"("bids":[{"price":45283.5,"qty":0.50000000}],)" +
+        R"("asks":[{"price":45283.6,"qty":0.30000000}],)" + R"("checksum":)" +
+        std::to_string(crc) + R"(,"timestamp":"2026-07-31T12:00:01.000000Z")" + "}]}";
+
+    for (int i = 0; i < 100; ++i) {
+        REQUIRE(feed.handle(update) == FeedStatus::kApplied);
+    }
+    const std::uint64_t verified_before = feed.stats().checksums_verified;
+
+    std::uint64_t observed = 0;
+    {
+        alloc_probe::Guard guard;
+        for (int i = 0; i < 10'000; ++i) {
+            (void)feed.handle(update);
+        }
+        observed = alloc_probe::Guard::count();
+    }
+    CHECK(observed == 0);
+
+    // The probe only means something if the guarded region did the work it is
+    // aimed at: applied frames, with the checksum actually verified.
+    CHECK(feed.stats().checksums_verified == verified_before + 10'000);
+    CHECK(feed.stats().checksum_mismatches == 0);
+    CHECK(feed.synced());
+}
+
+TEST_CASE("the frame reader poll loop does not allocate in steady state", "[alloc][net]") {
+    // The transport hands bytes to writable_tail/commit and pulls messages out
+    // of next(); that loop runs once per socket read, ahead of everything the
+    // tests above enforce.
+    net::FrameReader reader;
+
+    // A server-to-client (unmasked) text frame: FIN|text, 7-bit length.
+    const std::string payload =
+        R"({"channel":"book","type":"update","data":[{"symbol":"BTC/USD"}]})";
+    REQUIRE(payload.size() < 126);
+    std::string wire;
+    wire.push_back(static_cast<char>(0x81));
+    wire.push_back(static_cast<char>(payload.size()));
+    wire += payload;
+
+    // No Catch2 macros inside the armed region: an assertion handler is
+    // allowed to allocate, and a probe that counts the harness is a probe
+    // that cries wolf. Count successes, assert after disarming.
+    auto pump_one = [&]() -> bool {
+        char* dst = reader.writable_tail(wire.size());
+        std::memcpy(dst, wire.data(), wire.size());
+        reader.commit(wire.size(), wire.size());
+        net::Event event;
+        if (reader.next(event) != net::ReadStatus::kMessage) {
+            return false;
+        }
+        if (event.payload != payload) {
+            return false;
+        }
+        return reader.next(event) == net::ReadStatus::kNeedMore;
+    };
+
+    for (int i = 0; i < 100; ++i) {
+        REQUIRE(pump_one());
+    }
+
+    std::uint64_t observed = 0;
+    std::uint64_t pumped = 0;
+    {
+        alloc_probe::Guard guard;
+        for (int i = 0; i < 10'000; ++i) {
+            pumped += pump_one() ? 1 : 0;
+        }
+        observed = alloc_probe::Guard::count();
+    }
+    CHECK(observed == 0);
+    CHECK(pumped == 10'000);
 }
 
 TEST_CASE("sequence tracking does not allocate", "[alloc][sequence]") {
