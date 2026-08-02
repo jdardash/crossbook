@@ -15,6 +15,9 @@ tested against Kraken's CRC32 checksum of the top 10 levels, published on every
 single update — so "the book is correct" is a measurement with a number
 attached, not an assertion.
 
+**13,937 consecutive checksums verified against live Kraken BTC/USD. Zero
+mismatches.** ([how to reproduce](#verified-against-a-real-exchange))
+
 ---
 
 ## Why this is unusual
@@ -137,10 +140,95 @@ thousand messages actually delayed behind it, and the reported p99.9 describes
 the harness rather than the system. Gil Tene named this coordinated omission;
 [a test](tests/test_replay.cpp) asserts the harness does not commit it.
 
-No latency figures are published here yet. Producing them honestly needs a real
-captured feed on tuned hardware — pinned cores, turbo and C-states disabled —
-and until that exists, quoting numbers from a laptop would be exactly the kind
-of unearned precision the rest of this README argues against.
+Latency is now measured against a real captured Kraken feed rather than a
+synthetic generator — see below — but still on an untuned desktop. Pinned cores,
+disabled turbo, and disabled C-states would be needed before any of it should be
+compared against a production system.
+
+## Verified against a real exchange
+
+The central claim is not a design argument. It is a measurement, reproducible
+with two commands:
+
+```bash
+python tools/capture_kraken.py --symbol BTC/USD --depth 25 --seconds 900 --out cap.cbcap
+./build/release/tools/crossbook_verify cap.cbcap --depth 25
+```
+
+Result on a 9.5-minute live BTC/USD capture (14,506 frames):
+
+```
+  applied            13937
+  checksums verified 13937
+  checksum mismatch  0
+  match rate         100.000000%
+
+divergences: none
+```
+
+Every one of those 13,937 updates had its CRC32 recomputed locally from the
+reconstructed book and compared to the value Kraken published in that same
+message. A 425 KiB slice of that capture is
+[committed as a fixture](tests/fixtures/) and re-verified on every CI run across
+Linux, macOS, and Windows, so this is a continuous claim rather than a snapshot.
+
+### What live data caught that 226 tests did not
+
+The first run against real Kraken traffic did **not** produce 100%. It produced
+188 correct updates, then one mismatch, then a book that could never recover:
+
+```
+  applied            188
+  checksums verified 189
+  checksum mismatch  1
+  match rate         99.470899%
+```
+
+The cause is a protocol subtlety no amount of reading the spec surfaced. On a
+depth-limited subscription the venue maintains exactly N levels per side, and a
+level that falls off the bottom because a better one arrived is **never
+explicitly deleted** — the venue simply stops mentioning it and expects the
+client to have trimmed.
+
+Skip that trim and the stale levels sit in your book doing nothing visible,
+until the price moves back and they resurrect into the top ten, where they
+corrupt the checksum against a book the venue never held. The library passed
+every spec-derived test while getting this wrong, because the bug is only
+observable by comparing against the exchange.
+
+`BasicL2Book::trim` fixes it, and
+[a test asserts the failure still happens without it](tests/test_live_fixture.cpp) —
+otherwise making `trim` a no-op would leave the passing test passing.
+
+That is the argument for verification-against-ground-truth in one paragraph.
+
+### Latency on real traffic
+
+Replaying the fixture open-loop at true 1x pacing, measuring each frame from the
+instant it was *supposed* to be processed — full JSON decode, book update, and
+CRC32 verification per frame:
+
+```
+  events   1999 (105 warm-up discarded)
+  p50      2,501 ns
+  p99      24,303 ns
+  p99.9    54,527 ns
+  max      3,437,000 ns
+
+  WARNING: fell behind on 21 events (max lateness 42,300 ns).
+  These percentiles describe a saturated system, not steady state.
+```
+
+That warning is printed by the tool, not added afterwards, and it is the reason
+the harness exists. On an untuned Windows desktop the replay missed 21 of 2,000
+deadlines and one frame landed 3.4 ms late — almost certainly a scheduler
+preemption rather than anything in the book. A closed-loop harness would have
+reported a beautiful tail here by simply not measuring during the stall.
+
+**Do not compare these to a production system.** Nothing is pinned, turbo and
+C-states are untouched, and the numbers include a Python-captured file being
+read from disk. They are published because a measured number with its caveats
+attached beats an unmeasured claim, not because they are competitive.
 
 ### The benchmarks found a real bug
 
@@ -250,8 +338,11 @@ for (std::string_view frame : frames_from_your_transport) {
       id lookup, and queue position
 - [x] `executable_size` and `cost_to_trade` — what you can actually trade
 - [x] Consolidated cross-venue book: fee-adjusted, staleness-filtered
-- [x] 196 test cases / 70k assertions, `-Werror`, ASan + UBSan, six fuzz targets
-- [ ] Websocket transport — **deliberately not built.** Bring your own frames.
+- [x] RFC 6455 frame codec: fragmentation, control frames, masking, and every
+      length-encoding trap — zero-dependency, so transport stays yours
+- [x] Capture format + `crossbook_verify`, the tool that produced the number above
+- [x] 231 test cases / 83k assertions, `-Werror`, ASan + UBSan, six fuzz targets
+- [ ] Socket + TLS I/O — **deliberately not built.** Framing is here; bytes are yours.
 
 The library decodes, verifies, recovers, and prices execution; it does not open
 sockets. That boundary is a choice, not an omission: TLS would end the

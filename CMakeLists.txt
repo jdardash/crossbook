@@ -25,6 +25,7 @@ endif()
 option(CROSSBOOK_BUILD_TESTS "Build the test suite" ${CROSSBOOK_IS_TOP_LEVEL})
 option(CROSSBOOK_BUILD_BENCH "Build the benchmarks" OFF)
 option(CROSSBOOK_BUILD_FUZZ "Build the fuzz targets (clang only)" OFF)
+option(CROSSBOOK_BUILD_TOOLS "Build the command-line tools" ${CROSSBOOK_IS_TOP_LEVEL})
 option(CROSSBOOK_WERROR "Treat warnings as errors" ${CROSSBOOK_IS_TOP_LEVEL})
 
 # ---------------------------------------------------------------------------
@@ -92,6 +93,10 @@ endif()
 
 if(CROSSBOOK_BUILD_FUZZ)
     add_subdirectory(fuzz)
+endif()
+
+if(CROSSBOOK_BUILD_TOOLS)
+    add_subdirectory(tools)
 endif()
 
 # ---------------------------------------------------------------------------

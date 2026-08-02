@@ -42,6 +42,8 @@ oom-*
 # fixtures live in tests/fixtures/ and are added with `git add -f`.
 captures/
 *.cbcap
+# ...except the committed CI fixture, which is the whole point of the format.
+!tests/fixtures/*.cbcap
 
 # Benchmark output
 bench-results/

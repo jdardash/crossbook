@@ -86,11 +86,15 @@ struct FeedStats {
 template <typename Decoder, typename BookT = ArrayBook>
 class Feed {
 public:
-    Feed(std::string venue, Decoder decoder, SequencePolicy policy)
+    /// `book_depth` must match the depth you subscribed at, or 0 for a
+    /// full-depth subscription. Getting this wrong is not cosmetic: see
+    /// BasicL2Book::trim.
+    Feed(std::string venue, Decoder decoder, SequencePolicy policy, std::size_t book_depth = 0)
         : venue_(std::move(venue)),
           decoder_(std::move(decoder)),
           book_(decoder_.spec()),
-          tracker_(policy) {}
+          tracker_(policy),
+          book_depth_(book_depth) {}
 
     [[nodiscard]] const BookT& book() const noexcept { return book_; }
     [[nodiscard]] const DivergenceLog& divergences() const noexcept { return log_; }
@@ -185,6 +189,7 @@ private:
         for (const LevelUpdate& lvl : msg.levels) {
             book_.apply(lvl.side, lvl.price, lvl.qty);
         }
+        book_.trim(book_depth_);
         book_.set_last_update(msg.ts);
         last_ts_ = msg.ts;
 
@@ -230,6 +235,9 @@ private:
         for (const LevelUpdate& lvl : msg.levels) {
             book_.apply(lvl.side, lvl.price, lvl.qty);
         }
+        // Trim BEFORE verifying: the venue's checksum describes a book of the
+        // subscribed depth, so an untrimmed book is a different book.
+        book_.trim(book_depth_);
         book_.set_last_update(msg.ts);
         last_ts_ = msg.ts;
         ++stats_.applied;
@@ -272,6 +280,7 @@ private:
     SequenceTracker tracker_;
     DivergenceLog log_;
     FeedStats stats_{};
+    std::size_t book_depth_{0};
     Timestamp last_ts_{0};
     bool synced_{false};
 };

@@ -464,6 +464,45 @@ public:
         return out.size();
     }
 
+    /// Drop levels beyond `max_levels_per_side`, worst-price first.
+    ///
+    /// REQUIRED FOR DEPTH-LIMITED SUBSCRIPTIONS. When you subscribe to a book
+    /// at depth N, the venue maintains exactly N levels per side and sends you
+    /// updates for that window. A level that falls off the bottom because a
+    /// better one arrived is NOT explicitly deleted — the venue simply stops
+    /// mentioning it, and expects you to have trimmed.
+    ///
+    /// Skip this and the stale levels sit in your book doing nothing visible,
+    /// until the price moves back and they resurrect into the top 10, where
+    /// they corrupt the checksum against a book that never held them. That
+    /// failure is invisible to any test that does not compare against the
+    /// venue: it survived 188 consecutive verified updates on live Kraken data
+    /// before appearing once, and every update after it was unrecoverable.
+    ///
+    /// Costs O(max_levels + excess) and the excess is normally zero or one, so
+    /// it is cheap enough to run on every update.
+    void trim(std::size_t max_levels_per_side) {
+        if (max_levels_per_side == 0) {
+            return;  // Unlimited: a full-depth subscription needs no trimming.
+        }
+        for (const Side s : {Side::kBid, Side::kAsk}) {
+            if (side(s).size() <= max_levels_per_side) {
+                continue;
+            }
+            std::size_t seen = 0;
+            excess_.clear();
+            side(s).for_each([&](const Level& level) {
+                if (seen++ >= max_levels_per_side) {
+                    excess_.push_back(level.price);
+                }
+                return true;
+            });
+            for (const Price& price : excess_) {
+                side(s).apply(price, Qty{0});
+            }
+        }
+    }
+
     /// Order-sensitive hash of the entire book state.
     ///
     /// This is the determinism gate: replaying the same capture must produce
@@ -494,6 +533,8 @@ private:
     SideImpl bids_;
     SideImpl asks_;
     Timestamp last_update_{0};
+    /// Scratch for trim(). A member so repeated trimming does not allocate.
+    std::vector<Price> excess_;
 };
 
 /// The reference book: obviously correct, used as the differential oracle.
