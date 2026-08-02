@@ -76,35 +76,111 @@ public:
                                                : SequencePolicy::kBinanceFutures;
     }
 
+    /// The payload fields this decoder reads, captured in one walk. One
+    /// instance per decode call; small enough that zeroing it is free.
+    struct PayloadFields {
+        JsonValue event;      ///< "e"
+        JsonValue code;       ///< "code" — venue error report
+        JsonValue msg;        ///< "msg"  — venue error text
+        JsonValue symbol;     ///< "s"
+        JsonValue event_ms;   ///< "E"
+        JsonValue first_id;   ///< "U"
+        JsonValue final_id;   ///< "u"
+        JsonValue prev_id;    ///< "pu"
+        JsonValue bids;       ///< "b"
+        JsonValue asks;       ///< "a"
+
+        /// First occurrence wins, matching find(). See json::for_each_member.
+        bool consume(std::string_view key, const JsonValue& v) noexcept {
+            if (key == "e") {
+                capture(event, v);
+            } else if (key == "code") {
+                capture(code, v);
+            } else if (key == "msg") {
+                capture(msg, v);
+            } else if (key == "s") {
+                capture(symbol, v);
+            } else if (key == "E") {
+                capture(event_ms, v);
+            } else if (key == "U") {
+                capture(first_id, v);
+            } else if (key == "u") {
+                capture(final_id, v);
+            } else if (key == "pu") {
+                capture(prev_id, v);
+            } else if (key == "b") {
+                capture(bids, v);
+            } else if (key == "a") {
+                capture(asks, v);
+            }
+            return true;  // Walk everything; the walk is the validation.
+        }
+
+        static void capture(JsonValue& slot, const JsonValue& v) noexcept {
+            if (!slot.ok()) {
+                slot = v;
+            }
+        }
+    };
+
     /// Decode one frame. The returned reference is valid until the next call.
     [[nodiscard]] const DecodedMessage& decode(std::string_view frame) {
         message_.reset();
 
-        // Structural validation first: see json::well_formed. A truncated
-        // frame must not decode as an update whose missing side reads as an
-        // empty one.
-        if (!json::well_formed(frame)) {
+        // One walk collects every field, and completing it validates the
+        // frame to full depth — see json::for_each_member, and the Kraken
+        // decoder for the same shape. The envelope needs care: combined
+        // streams wrap the payload as {"stream":"...","data":{...}}, and when
+        // that envelope is present the old find()-based code looked up every
+        // field INSIDE data only. So fields captured at the top level are
+        // used only when there is no envelope; an enveloped payload gets its
+        // own walk, and its fields cannot be shadowed by top-level ones.
+        PayloadFields top;
+        JsonValue wrapped;
+        const bool walked = json::for_each_member(frame, [&](std::string_view key,
+                                                             const JsonValue& v) {
+            if (key == "data") {
+                PayloadFields::capture(wrapped, v);
+                return true;
+            }
+            return top.consume(key, v);
+        });
+        if (!walked) {
+            // Valid JSON that is not an object — an ack shaped as an array, a
+            // bare string — was kIgnored under find() and stays that way;
+            // only genuinely malformed input is rejected.
+            if (json::well_formed(frame)) {
+                message_.kind = MessageKind::kIgnored;
+                return message_;
+            }
             return fail(DecodeError::kMalformed);
         }
 
-        // Combined streams wrap the payload: {"stream":"...","data":{...}}.
+        PayloadFields payload_fields;
         std::string_view payload = frame;
-        const JsonValue wrapped = json::find(frame, "data");
         if (wrapped && wrapped.type == JsonType::kObject) {
             payload = wrapped.raw;
+            // Already validated by the frame walk, so this cannot fail; the
+            // check stays because "cannot" is an argument, not a guarantee.
+            if (!json::for_each_member(
+                    payload, [&](std::string_view key, const JsonValue& v) {
+                        return payload_fields.consume(key, v);
+                    })) {
+                return fail(DecodeError::kMalformed);
+            }
+        } else {
+            payload_fields = top;
         }
+        const PayloadFields& f = payload_fields;
 
-        const JsonValue event = json::find(payload, "e");
-        if (!event) {
+        if (!f.event) {
             // Binance reports failures as {"code":-1121,"msg":"Invalid symbol."}
             // — no "e", so this used to be indistinguishable from an ack. A
             // subscription that never succeeds then looks exactly like a quiet
             // market: nothing arrives, nothing is logged, the feed never syncs.
-            const JsonValue code = json::find(payload, "code");
-            const JsonValue msg = json::find(payload, "msg");
-            if (code && code.type == JsonType::kNumber && msg) {
+            if (f.code && f.code.type == JsonType::kNumber && f.msg) {
                 message_.kind = MessageKind::kVenueError;
-                message_.bad_token = json::string_body(msg);
+                message_.bad_token = json::string_body(f.msg);
                 return message_;
             }
             message_.kind = MessageKind::kIgnored;  // Ack or pong.
@@ -113,11 +189,11 @@ public:
         // string_equals, not string_body: an escaped-but-legal spelling
         // decodes to empty under string_body, which reads as a mismatch and
         // silently ignores a frame the venue sent correctly.
-        if (!json::string_equals(event, "depthUpdate")) {
+        if (!json::string_equals(f.event, "depthUpdate")) {
             message_.kind = MessageKind::kIgnored;
             return message_;
         }
-        message_.symbol = json::string_body(json::find(payload, "s"));
+        message_.symbol = json::string_body(f.symbol);
 
         // ROUTE BY SYMBOL. Binance advertises combined streams and this decoder
         // unwraps the envelope above, but nothing ever checked what was inside
@@ -142,14 +218,14 @@ public:
         // Event time, milliseconds since epoch. Normalised to nanoseconds so
         // no consumer has to remember which venue used which unit.
         std::uint64_t event_ms = 0;
-        if (json::parse_u64(json::number_token(json::find(payload, "E")), event_ms)) {
+        if (json::parse_u64(json::number_token(f.event_ms), event_ms)) {
             message_.ts = static_cast<Timestamp>(event_ms) * 1'000'000;
         }
 
         std::uint64_t first_id = 0;
         std::uint64_t final_id = 0;
-        if (!json::parse_u64(json::number_token(json::find(payload, "U")), first_id) ||
-            !json::parse_u64(json::number_token(json::find(payload, "u")), final_id)) {
+        if (!json::parse_u64(json::number_token(f.first_id), first_id) ||
+            !json::parse_u64(json::number_token(f.final_id), final_id)) {
             return fail(DecodeError::kBadSequence);
         }
         message_.ids.first_id = first_id;
@@ -157,7 +233,7 @@ public:
 
         if (market_ == BinanceMarket::kFutures) {
             std::uint64_t prev_id = 0;
-            if (!json::parse_u64(json::number_token(json::find(payload, "pu")), prev_id)) {
+            if (!json::parse_u64(json::number_token(f.prev_id), prev_id)) {
                 // A futures stream without `pu` cannot have its continuity
                 // checked at all. Failing here is the whole point: silently
                 // degrading to "no gap detection" is how a book drifts.
@@ -167,10 +243,10 @@ public:
         }
         message_.has_ids = true;
 
-        if (!decode_side(payload, "b", Side::kBid)) {
+        if (!decode_side(f.bids, Side::kBid)) {
             return fail_decoded();
         }
-        if (!decode_side(payload, "a", Side::kAsk)) {
+        if (!decode_side(f.asks, Side::kAsk)) {
             return fail_decoded();
         }
         return message_;
@@ -183,13 +259,30 @@ public:
     [[nodiscard]] const DecodedMessage& decode_snapshot(std::string_view body) {
         message_.reset();
         message_.kind = MessageKind::kSnapshot;
-        if (!json::well_formed(body)) {
-            return fail(DecodeError::kMalformed);
+
+        JsonValue last_id_value;
+        JsonValue bids;
+        JsonValue asks;
+        if (!json::for_each_member(body, [&](std::string_view key, const JsonValue& v) {
+                if (key == "lastUpdateId") {
+                    PayloadFields::capture(last_id_value, v);
+                } else if (key == "bids") {
+                    PayloadFields::capture(bids, v);
+                } else if (key == "asks") {
+                    PayloadFields::capture(asks, v);
+                }
+                return true;  // The walk is the validation; see decode().
+            })) {
+            // A valid-JSON body that is not an object never reached the
+            // member lookups under find(): lastUpdateId was simply absent and
+            // the failure surfaced as kBadSequence. Keep that reading —
+            // kMalformed is reserved for input that is not JSON at all.
+            return fail(json::well_formed(body) ? DecodeError::kBadSequence
+                                                : DecodeError::kMalformed);
         }
 
         std::uint64_t last_update_id = 0;
-        if (!json::parse_u64(json::number_token(json::find(body, "lastUpdateId")),
-                             last_update_id)) {
+        if (!json::parse_u64(json::number_token(last_id_value), last_update_id)) {
             return fail(DecodeError::kBadSequence);
         }
         message_.ids.first_id = last_update_id;
@@ -197,10 +290,10 @@ public:
         message_.ids.prev_id = last_update_id;
         message_.has_ids = true;
 
-        if (!decode_side(body, "bids", Side::kBid)) {
+        if (!decode_side(bids, Side::kBid)) {
             return fail_decoded();
         }
-        if (!decode_side(body, "asks", Side::kAsk)) {
+        if (!decode_side(asks, Side::kAsk)) {
             return fail_decoded();
         }
         return message_;
@@ -251,8 +344,7 @@ private:
     }
 
     /// Levels are two-element arrays of numeric strings: ["price","qty"].
-    [[nodiscard]] bool decode_side(std::string_view payload, std::string_view key, Side side) {
-        const JsonValue array = json::find(payload, key);
+    [[nodiscard]] bool decode_side(const JsonValue& array, Side side) {
         if (!array) {
             return true;  // One-sided updates are normal.
         }
@@ -315,13 +407,13 @@ private:
             // The check is the same one Kraken's ingest runs, for the same
             // reason: an assumption about the wire that nothing tested is an
             // assumption that will be wrong eventually and silently.
-            if (!is_canonical_at_scale(price_token, spec_.price_scale)) {
+            if (!is_canonical_at_scale(price_token, spec_.price_scale, price.mantissa)) {
                 message_.error = DecodeError::kNonCanonical;
                 message_.bad_token = price_token;
                 failed = true;
                 return false;
             }
-            if (!is_canonical_at_scale(qty_token, spec_.qty_scale)) {
+            if (!is_canonical_at_scale(qty_token, spec_.qty_scale, qty.mantissa)) {
                 message_.error = DecodeError::kNonCanonical;
                 message_.bad_token = qty_token;
                 failed = true;

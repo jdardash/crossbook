@@ -173,10 +173,48 @@ public:
     [[nodiscard]] const DecodedMessage& decode(std::string_view frame) {
         message_.reset();
 
-        // Structural validation first: see json::well_formed. Without it a
-        // truncated frame decodes as a valid update with the missing side
-        // simply absent, and gets applied.
-        if (!json::well_formed(frame)) {
+        // One member walk collects every top-level field this decoder reads.
+        // This replaces a well_formed() pre-pass plus five find() calls that
+        // each restarted from the front of the frame — the walk validates the
+        // whole frame to full depth as it goes (see json::for_each_member),
+        // so a truncated frame still cannot decode as a valid update with the
+        // missing side simply absent. First occurrence wins, exactly as
+        // find() answered, so a duplicate-key frame reads identically through
+        // either path.
+        JsonValue error_text;
+        JsonValue success;
+        JsonValue method;
+        JsonValue channel;
+        JsonValue type;
+        JsonValue data;
+        const bool walked_frame = json::for_each_member(frame, [&](std::string_view key,
+                                                                   const JsonValue& v) {
+            if (key == "error") {
+                capture(error_text, v);
+            } else if (key == "success") {
+                capture(success, v);
+            } else if (key == "method") {
+                capture(method, v);
+            } else if (key == "channel") {
+                capture(channel, v);
+            } else if (key == "type") {
+                capture(type, v);
+            } else if (key == "data") {
+                capture(data, v);
+            }
+            return true;  // Walk everything: completing the walk IS the
+                          // structural validation of the frame.
+        });
+        if (!walked_frame) {
+            // Not a well-formed object. A frame that is valid JSON but not an
+            // object — a bare array, a string, a number — was never an error
+            // before this rewrite and must not become one: find() simply had
+            // nothing to find and the frame fell through to kIgnored. Only
+            // genuinely malformed input is rejected.
+            if (json::well_formed(frame)) {
+                message_.kind = MessageKind::kIgnored;
+                return message_;
+            }
             return fail(DecodeError::kMalformed);
         }
 
@@ -186,16 +224,13 @@ public:
         // making a pair name we spelled wrong indistinguishable from a market
         // that simply had nothing to say. The feed never synced and nothing
         // anywhere said why.
-        const JsonValue error_text = json::find(frame, "error");
         if (error_text && error_text.type == JsonType::kString) {
             return venue_error(json::string_body(error_text));
         }
-        const JsonValue success = json::find(frame, "success");
         if (success && success.type == JsonType::kBool && success.raw == "false") {
-            return venue_error(json::string_body(json::find(frame, "method")));
+            return venue_error(json::string_body(method));
         }
 
-        const JsonValue channel = json::find(frame, "channel");
         if (!channel) {
             // Not a channel message at all — an ack, a pong, or a status
             // frame. Not an error; simply not ours.
@@ -214,7 +249,6 @@ public:
             return message_;
         }
 
-        const JsonValue type = json::find(frame, "type");
         if (json::string_equals(type, "snapshot")) {
             message_.kind = MessageKind::kSnapshot;
         } else if (json::string_equals(type, "update")) {
@@ -224,7 +258,6 @@ public:
             return message_;
         }
 
-        const JsonValue data = json::find(frame, "data");
         if (!data || data.type != JsonType::kArray) {
             return fail(DecodeError::kMalformed);
         }
@@ -247,7 +280,34 @@ public:
             if (matched) {
                 return true;  // Keep walking, so the array is still validated.
             }
-            const JsonValue symbol_value = json::find(entry.raw, "symbol");
+
+            // One walk per entry, capturing the five fields this decoder
+            // reads. The old shape re-found each of them, and because Kraken
+            // spells checksum and timestamp AFTER the level arrays on the
+            // wire, each of those finds re-walked both arrays to get there.
+            JsonValue symbol_value;
+            JsonValue checksum;
+            JsonValue timestamp;
+            JsonValue bids;
+            JsonValue asks;
+            if (!json::for_each_member(entry.raw, [&](std::string_view key, const JsonValue& v) {
+                    if (key == "symbol") {
+                        capture(symbol_value, v);
+                    } else if (key == "checksum") {
+                        capture(checksum, v);
+                    } else if (key == "timestamp") {
+                        capture(timestamp, v);
+                    } else if (key == "bids") {
+                        capture(bids, v);
+                    } else if (key == "asks") {
+                        capture(asks, v);
+                    }
+                    return true;
+                })) {
+                failed = true;
+                return false;
+            }
+
             std::string_view symbol;
             const json::StringRead read = json::read_string(symbol_value, symbol);
             // An entry with no symbol at all is treated as ours: that is the
@@ -263,7 +323,7 @@ public:
                 return true;  // Some other instrument on a multiplexed socket.
             }
             matched = true;
-            failed = !decode_entry(entry.raw);
+            failed = !decode_entry(symbol_value, checksum, timestamp, bids, asks);
             return !failed;
         });
 
@@ -306,19 +366,31 @@ private:
         return message_;
     }
 
-    [[nodiscard]] bool decode_entry(std::string_view entry) {
-        message_.symbol = json::string_body(json::find(entry, "symbol"));
+    /// Capture the first occurrence of a key, reproducing find()'s
+    /// first-wins duplicate policy through the single-walk path. See the
+    /// duplicate-keys note on json::find for why first-wins is the safe
+    /// answer; tests/test_json.cpp pins the two paths agreeing.
+    static void capture(JsonValue& slot, const JsonValue& v) noexcept {
+        if (!slot.ok()) {
+            slot = v;
+        }
+    }
 
-        if (!decode_checksum(entry)) {
+    [[nodiscard]] bool decode_entry(const JsonValue& symbol, const JsonValue& checksum,
+                                    const JsonValue& timestamp, const JsonValue& bids,
+                                    const JsonValue& asks) {
+        message_.symbol = json::string_body(symbol);
+
+        if (!decode_checksum(checksum)) {
             return false;
         }
-        if (!decode_timestamp(entry)) {
+        if (!decode_timestamp(timestamp)) {
             return false;
         }
-        if (!decode_side(entry, "bids", Side::kBid)) {
+        if (!decode_side(bids, Side::kBid)) {
             return false;
         }
-        if (!decode_side(entry, "asks", Side::kAsk)) {
+        if (!decode_side(asks, Side::kAsk)) {
             return false;
         }
         return true;
@@ -337,8 +409,7 @@ private:
     /// turned the library's central correctness claim off, silently, forever.
     ///
     /// Both spellings are therefore accepted, and anything else is an error.
-    [[nodiscard]] bool decode_checksum(std::string_view entry) {
-        const JsonValue checksum = json::find(entry, "checksum");
+    [[nodiscard]] bool decode_checksum(const JsonValue& checksum) {
         if (!checksum) {
             return true;
         }
@@ -365,8 +436,7 @@ private:
     /// A missing or unreadable timestamp is fatal rather than a silent zero:
     /// zero reinstates exactly that dead check, and a feed that cannot go stale
     /// will serve an hour-old book with full confidence.
-    [[nodiscard]] bool decode_timestamp(std::string_view entry) {
-        const JsonValue timestamp = json::find(entry, "timestamp");
+    [[nodiscard]] bool decode_timestamp(const JsonValue& timestamp) {
         const std::string_view text = json::string_body(timestamp);
         std::int64_t nanos = 0;
         if (text.empty() || !detail::parse_rfc3339_nanos(text, nanos)) {
@@ -378,8 +448,7 @@ private:
         return true;
     }
 
-    [[nodiscard]] bool decode_side(std::string_view entry, std::string_view key, Side side) {
-        const JsonValue array = json::find(entry, key);
+    [[nodiscard]] bool decode_side(const JsonValue& array, Side side) {
         if (!array) {
             return true;  // A one-sided update is normal.
         }
@@ -399,8 +468,24 @@ private:
                 return false;
             }
 
-            const std::string_view price_token = json::number_token(json::find(level.raw, "price"));
-            const std::string_view qty_token = json::number_token(json::find(level.raw, "qty"));
+            // One walk per level object, not one find() per field. A level is
+            // small, but there are up to twenty of them per frame and this is
+            // the innermost loop of the whole library.
+            JsonValue price_value;
+            JsonValue qty_value;
+            if (!json::for_each_member(level.raw, [&](std::string_view key, const JsonValue& v) {
+                    if (key == "price") {
+                        capture(price_value, v);
+                    } else if (key == "qty") {
+                        capture(qty_value, v);
+                    }
+                    return true;
+                })) {
+                failed = true;
+                return false;
+            }
+            const std::string_view price_token = json::number_token(price_value);
+            const std::string_view qty_token = json::number_token(qty_value);
             if (price_token.empty() || qty_token.empty()) {
                 failed = true;
                 return false;
@@ -432,13 +517,13 @@ private:
             // — "0.5" where the scale is 8 — every checksum fails against a book
             // that is numerically perfect. Catching it here names the token;
             // catching it downstream means staring at a match rate of zero.
-            if (!is_canonical_at_scale(price_token, spec_.price_scale)) {
+            if (!is_canonical_at_scale(price_token, spec_.price_scale, price.mantissa)) {
                 message_.error = DecodeError::kNonCanonical;
                 message_.bad_token = price_token;
                 failed = true;
                 return false;
             }
-            if (!is_canonical_at_scale(qty_token, spec_.qty_scale)) {
+            if (!is_canonical_at_scale(qty_token, spec_.qty_scale, qty.mantissa)) {
                 message_.error = DecodeError::kNonCanonical;
                 message_.bad_token = qty_token;
                 failed = true;

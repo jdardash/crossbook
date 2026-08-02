@@ -324,6 +324,24 @@ inline constexpr std::size_t kMaxFormattedFixed = 24;
     return detail::format_fixed_into(parsed.mantissa, scale, buf) == text;
 }
 
+/// `is_canonical_at_scale` for a token the caller has ALREADY parsed at
+/// `scale`, with `mantissa` the result. Skips the re-parse; the definition of
+/// canonical — byte equality with `format_fixed_into`'s spelling — is
+/// unchanged, and both overloads share it, so they cannot answer differently
+/// for the same token.
+///
+/// This exists because the decoders run the guard on every price and quantity
+/// immediately after parsing it, and the token is small enough (~10 bytes)
+/// that a redundant parse was a measurable slice of the whole decode.
+[[nodiscard]] inline bool is_canonical_at_scale(std::string_view text, Scale scale,
+                                                std::int64_t mantissa) noexcept {
+    if (!text.empty() && text.front() == '+') {
+        text.remove_prefix(1);
+    }
+    std::array<char, detail::kMaxFormattedFixed> buf{};
+    return detail::format_fixed_into(mantissa, scale, buf) == text;
+}
+
 /// The checksum token for a fixed-point value, per Kraken's algorithm: the
 /// canonical decimal with its point removed and leading zeros stripped.
 ///

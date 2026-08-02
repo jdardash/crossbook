@@ -391,6 +391,90 @@ constexpr JsonType classify(std::string_view s, std::size_t pos) noexcept {
     }
 }
 
+/// Invoke `fn(key, JsonValue)` for each member of the object spanned by
+/// `object_raw`, in wire order, walking the object exactly once.
+///
+/// WHY THIS EXISTS WHEN `find` ALREADY DOES:
+///
+/// `find` restarts from the front of the object on every call, and a decoder
+/// needs five or six fields per frame — the audit measured a Kraken frame
+/// being re-walked 9.3x, and that re-walking was the majority of the ~2400 ns
+/// decode cost. One member walk with the caller dispatching on key visits
+/// every byte once. This is how production feed handlers read known-schema
+/// wire formats, and it is the primitive both venue decoders are built on.
+///
+/// THE CONTRACT IS ALSO A VALIDATION PASS. Success — a return of true — means
+/// the whole span was exactly one structurally valid JSON object with nothing
+/// trailing, every nested value valid to full depth, every scalar spelled per
+/// RFC 8259. That is precisely `well_formed`'s guarantee, which is why the
+/// decoders no longer run `well_formed` first: the walk that reads the fields
+/// IS the pass that used to be paid for separately. A caller that stops the
+/// walk early (fn returns false) forfeits the guarantee for the unvisited
+/// remainder, so the decoders never stop early on frames they intend to apply.
+///
+/// `key` is the raw span between the key's quotes, NOT unescaped. Every field
+/// name in every venue schema is plain ASCII, and an escaped spelling of a
+/// known key ("channel") is treated as an unknown key rather than
+/// matched — same fail-closed reasoning as `find`, which this mirrors.
+///
+/// DUPLICATE KEYS: the walk reports every occurrence, in order. A caller that
+/// captures only the first occurrence of each key reproduces `find`'s
+/// first-wins semantics exactly; both decoders do, and tests/test_json.cpp
+/// pins the equivalence so the two lookup paths cannot drift.
+template <typename Fn>
+[[nodiscard]] constexpr bool for_each_member(std::string_view object_raw, Fn&& fn) {
+    std::size_t pos = skip_space(object_raw, 0);
+    if (pos >= object_raw.size() || object_raw[pos] != '{') {
+        return false;
+    }
+    ++pos;
+    pos = skip_space(object_raw, pos);
+    if (pos < object_raw.size() && object_raw[pos] == '}') {
+        return skip_space(object_raw, pos + 1) == object_raw.size();  // Empty object.
+    }
+
+    while (true) {
+        pos = skip_space(object_raw, pos);
+        const std::size_t key_start = pos;
+        const std::size_t key_end = skip_string(object_raw, pos);
+        if (key_end == std::string_view::npos) {
+            return false;
+        }
+        const std::string_view key =
+            object_raw.substr(key_start + 1, key_end - key_start - 2);
+
+        pos = skip_space(object_raw, key_end);
+        if (pos >= object_raw.size() || object_raw[pos] != ':') {
+            return false;
+        }
+        ++pos;
+        pos = skip_space(object_raw, pos);
+
+        const std::size_t value_start = pos;
+        const std::size_t value_end = skip_value(object_raw, pos);
+        if (value_end == std::string_view::npos) {
+            return false;
+        }
+
+        if (!fn(key, JsonValue{object_raw.substr(value_start, value_end - value_start),
+                               classify(object_raw, value_start)})) {
+            return true;  // Caller stopped early; remainder unvalidated.
+        }
+
+        pos = skip_space(object_raw, value_end);
+        if (pos >= object_raw.size()) {
+            return false;
+        }
+        if (object_raw[pos] == '}') {
+            return skip_space(object_raw, pos + 1) == object_raw.size();
+        }
+        if (object_raw[pos] != ',') {
+            return false;
+        }
+        ++pos;
+    }
+}
+
 /// Invoke `fn(JsonValue)` for each element of the array spanned by `array_raw`.
 /// Stops early if `fn` returns false. Returns false on malformed input.
 template <typename Fn>

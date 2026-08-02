@@ -321,3 +321,86 @@ TEST_CASE("duplicate keys resolve first-wins, deliberately", "[json]") {
     CHECK(json::find(retyped, "checksum").type == JsonType::kNumber);
     CHECK(json::find(retyped, "checksum").raw == "2418130093");
 }
+
+TEST_CASE("for_each_member visits what find answers, in one walk", "[json]") {
+    // The decoders read five or six fields per frame. Through find() each
+    // lookup restarts from the front; for_each_member visits every member
+    // once and the caller dispatches on key. The two must agree exactly, or
+    // the decoder rewrite changed semantics rather than cost.
+    constexpr std::string_view doc =
+        R"({"channel":"book","type":"update","data":[{"px":1}],"n":42})";
+
+    JsonValue channel;
+    JsonValue type;
+    JsonValue data;
+    JsonValue n;
+    std::size_t visited = 0;
+    const bool ok = json::for_each_member(doc, [&](std::string_view key, const JsonValue& v) {
+        ++visited;
+        if (key == "channel" && !channel.ok()) {
+            channel = v;
+        } else if (key == "type" && !type.ok()) {
+            type = v;
+        } else if (key == "data" && !data.ok()) {
+            data = v;
+        } else if (key == "n" && !n.ok()) {
+            n = v;
+        }
+        return true;
+    });
+    REQUIRE(ok);
+    CHECK(visited == 4);
+    CHECK(channel.raw == json::find(doc, "channel").raw);
+    CHECK(type.raw == json::find(doc, "type").raw);
+    CHECK(data.raw == json::find(doc, "data").raw);
+    CHECK(data.type == JsonType::kArray);
+    CHECK(n.raw == json::find(doc, "n").raw);
+
+    // First-wins duplicates: capture-if-empty reproduces find() exactly.
+    constexpr std::string_view dup = R"({"e":"depthUpdate","e":"trade"})";
+    JsonValue e;
+    REQUIRE(json::for_each_member(dup, [&](std::string_view key, const JsonValue& v) {
+        if (key == "e" && !e.ok()) {
+            e = v;
+        }
+        return true;
+    }));
+    CHECK(e.raw == json::find(dup, "e").raw);
+}
+
+TEST_CASE("a completed for_each_member walk is a well_formed guarantee", "[json]") {
+    // The decoders dropped their well_formed() pre-pass on the strength of
+    // this contract: success means the whole span was one valid object with
+    // nothing trailing and every nested value valid. So every rejection
+    // well_formed makes, the walk must make too.
+    const auto walks = [](std::string_view s) {
+        return json::for_each_member(s, [](std::string_view, const JsonValue&) { return true; });
+    };
+
+    // Truncations, at every depth.
+    CHECK_FALSE(walks(R"({"b":[[)"));
+    CHECK_FALSE(walks(R"({"a":{"b":1})"));
+    CHECK_FALSE(walks(R"({"a":1)"));
+
+    // Bad scalars nested inside values the walk merely skips over. This is
+    // the {"checksum":12ab} class the docblock on well_formed records.
+    CHECK_FALSE(walks(R"({"checksum":12ab})"));
+    CHECK_FALSE(walks(R"({"data":[{"qty":truthy}]})"));
+    CHECK_FALSE(walks(R"({"px":+5})"));
+
+    // Trailing bytes after the object.
+    CHECK_FALSE(walks(R"({"a":1} )" "x"));
+    CHECK_FALSE(walks(R"({"a":1}{"b":2})"));
+
+    // Not an object at all: the walk refuses, and the decoders route these
+    // through well_formed() to keep valid-but-not-ours frames kIgnored.
+    CHECK_FALSE(walks(R"([1,2,3])"));
+    CHECK_FALSE(walks(R"("just a string")"));
+
+    // And the shapes venues actually send still walk.
+    CHECK(walks(R"({})"));
+    CHECK(walks(R"({"channel":"heartbeat"})"));
+    CHECK(walks(
+        R"({"e":"depthUpdate","E":1571889248277,"s":"BTCUSDT","U":157,"u":160,)"
+        R"("b":[["0.0024","10"]],"a":[["0.0026","100"]]})"));
+}
